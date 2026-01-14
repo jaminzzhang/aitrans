@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'ai_provider.dart';
+import 'prompts.dart';
 
 /// Ollama Provider 实现 (本地模型)
 class OllamaProvider implements AIProvider {
@@ -42,7 +43,7 @@ class OllamaProvider implements AIProvider {
         ),
         data: {
           'model': model,
-          'prompt': '你是翻译助手。只返回翻译结果，不要解释。\n\n翻译到$to：$text',
+          'prompt': '${Prompts.translateSystem}\n\n${Prompts.translateUser(text)}',
           'stream': true,
         },
       );
@@ -75,19 +76,8 @@ class OllamaProvider implements AIProvider {
 
   @override
   Stream<List<Example>> getExamples(String word) async* {
-    final prompt = '''
-为单词/短语 "$word" 提供3个不同场景的例句。
-请严格按照以下JSON格式返回：
-[
-  {"scene": "日常对话", "original": "英文例句", "translation": "中文翻译"},
-  {"scene": "商务场景", "original": "英文例句", "translation": "中��翻译"},
-  {"scene": "学术写作", "original": "英文例句", "translation": "中文翻译"}
-]
-只返回JSON，不要其他内容。
-''';
-
     yield* _streamJsonList<Example>(
-      prompt,
+      Prompts.examples(word),
       (json) => Example(
         scene: json['scene'] ?? '',
         original: json['original'] ?? '',
@@ -98,19 +88,8 @@ class OllamaProvider implements AIProvider {
 
   @override
   Stream<List<MovieQuote>> getMovieQuotes(String word) async* {
-    final prompt = '''
-提供包含 "$word" 的3句经典电影台词。
-请严格按照以下JSON格式返回：
-[
-  {"movie": "电影名", "quote": "台词原文", "translation": "中文翻译"},
-  {"movie": "电影名", "quote": "台词原文", "translation": "中文翻译"},
-  {"movie": "电影名", "quote": "台词原文", "translation": "中文翻译"}
-]
-只返回JSON，不要其他内容。
-''';
-
     yield* _streamJsonList<MovieQuote>(
-      prompt,
+      Prompts.movieQuotes(word),
       (json) => MovieQuote(
         movie: json['movie'] ?? '',
         quote: json['quote'] ?? '',
@@ -121,19 +100,8 @@ class OllamaProvider implements AIProvider {
 
   @override
   Stream<List<ExamItem>> getExamItems(String word) async* {
-    final prompt = '''
-提供包含 "$word" 的3道英语考试真题（如高考、四六级、托福、雅思）。
-请严格按照以下JSON格式返回：
-[
-  {"source": "考试来源", "question": "题目", "answer": "答案解析"},
-  {"source": "考试来源", "question": "题目", "answer": "答案解析"},
-  {"source": "考试来源", "question": "题目", "answer": "答案解析"}
-]
-只返回JSON，不要其他内容。
-''';
-
     yield* _streamJsonList<ExamItem>(
-      prompt,
+      Prompts.examItems(word),
       (json) => ExamItem(
         source: json['source'] ?? '',
         question: json['question'] ?? '',
