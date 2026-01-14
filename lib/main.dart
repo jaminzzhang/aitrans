@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:macos_window_utils/macos_window_utils.dart';
 import 'app.dart';
 import 'core/cache/translation_cache.dart';
 import 'core/config/ai_config.dart';
@@ -39,19 +40,26 @@ void main() async {
       await windowManager.ensureInitialized();
 
       const windowOptions = WindowOptions(
-        size: Size(500, 700),
-        minimumSize: Size(400, 500),
+        size: Size(800, 450),
+        minimumSize: Size(400, 225),
         center: true,
         backgroundColor: Colors.transparent,
         skipTaskbar: false,
         titleBarStyle: TitleBarStyle.hidden,
-        windowButtonVisibility: true,
+        windowButtonVisibility: false,
       );
 
       await windowManager.waitUntilReadyToShow(windowOptions, () async {
+        await windowManager.setTitle('');
         await windowManager.show();
         await windowManager.focus();
       });
+
+      // 设置玻璃效果 (macOS 原生材质)
+      await WindowManipulator.initialize();
+      await WindowManipulator.makeTitlebarTransparent();
+      await WindowManipulator.enableFullSizeContentView();
+      await WindowManipulator.setMaterial(NSVisualEffectViewMaterial.hudWindow);
 
       // 注册全局快捷键
       await HotkeyService().register();

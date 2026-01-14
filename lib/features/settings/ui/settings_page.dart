@@ -86,10 +86,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final config = ref.watch(aiConfigProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('设置'),
-        centerTitle: false,
-      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

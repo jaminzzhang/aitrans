@@ -43,6 +43,7 @@ dependencies:
   # macOS Features
   hotkey_manager: ^0.2.3
   window_manager: ^0.4.3
+  macos_window_utils: ^1.6.1
 
   # UI Components
   flutter_markdown: ^0.7.4

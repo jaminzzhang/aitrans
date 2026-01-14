@@ -68,13 +68,6 @@ class _TranslateInputFieldState extends ConsumerState<TranslateInputField> {
         }
       },
       child: Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: theme.colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
         child: Row(
           children: [
             Expanded(
@@ -92,7 +85,7 @@ class _TranslateInputFieldState extends ConsumerState<TranslateInputField> {
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                   ),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.all(16),
+                  contentPadding: const EdgeInsets.all(0),
                 ),
               ),
             ),

@@ -29,8 +29,9 @@ class ResultTabs extends ConsumerWidget {
             child: TabBar(
               labelColor: theme.colorScheme.primary,
               unselectedLabelColor:
-                  theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  theme.colorScheme.onSurface.withValues(alpha: 0.5),
               indicatorColor: theme.colorScheme.primary,
+              dividerHeight: 0.2,
               tabs: const [
                 Tab(text: '翻译'),
                 Tab(text: '例句'),
