@@ -69,6 +69,15 @@ class _MainPageState extends ConsumerState<MainPage> {
                 ref.read(targetLanguageProvider.notifier).state = lang;
               }
               Navigator.of(context).pop();
+
+              // 如果有输入文本，自动翻译
+              final inputText = ref.read(inputTextProvider);
+              if (inputText.trim().isNotEmpty) {
+                // 延迟一帧确保 provider 已更新
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  ref.read(translateControllerProvider.notifier).translateNow(inputText);
+                });
+              }
             },
             child: Row(
               children: [
