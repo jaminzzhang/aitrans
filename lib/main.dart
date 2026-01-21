@@ -59,7 +59,7 @@ void main() async {
       await WindowManipulator.initialize();
       await WindowManipulator.makeTitlebarTransparent();
       await WindowManipulator.enableFullSizeContentView();
-      await WindowManipulator.setMaterial(NSVisualEffectViewMaterial.hudWindow);
+      await WindowManipulator.setMaterial(NSVisualEffectViewMaterial.underWindowBackground);
 
       // 注册全局快捷键
       await HotkeyService().register();

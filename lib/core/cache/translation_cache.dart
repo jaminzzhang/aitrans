@@ -22,6 +22,9 @@ class TranslationCache {
 
   TranslationCache(this._box);
 
+  /// 获取缓存条目数量
+  int get count => _box.length;
+
   /// 获取缓存
   Future<String?> get(String key) async {
     final hash = _hashKey(key);

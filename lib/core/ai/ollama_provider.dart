@@ -43,7 +43,7 @@ class OllamaProvider implements AIProvider {
         ),
         data: {
           'model': model,
-          'prompt': '${Prompts.translateSystem}\n\n${Prompts.translateUser(text)}',
+          'prompt': '${Prompts.translateSystem(from: from, to: to)}\n\n${Prompts.translateUser(text)}',
           'stream': true,
         },
       );

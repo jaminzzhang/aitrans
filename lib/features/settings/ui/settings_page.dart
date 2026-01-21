@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ai/provider_factory.dart';
+import '../../../core/cache/translation_cache.dart';
 import '../../../core/config/ai_config.dart';
 import '../../translate/logic/translate_controller.dart';
 
@@ -155,6 +156,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ],
           const SizedBox(height: 32),
 
+          // 缓存管理
+          _SectionTitle(title: '缓存管理'),
+          const SizedBox(height: 8),
+          _buildCacheSection(),
+          const SizedBox(height: 32),
+
           // 快捷键说明
           _SectionTitle(title: '快捷键'),
           const SizedBox(height: 8),
@@ -278,6 +285,61 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ProviderType.ollama => 'llama3.2',
       ProviderType.custom => '输入模型名称',
     };
+  }
+
+  Widget _buildCacheSection() {
+    final cache = ref.watch(translationCacheProvider);
+    final cacheCount = cache?.count ?? 0;
+    final theme = Theme.of(context);
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            '已缓存 $cacheCount 条翻译结果',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+        OutlinedButton.icon(
+          onPressed: cacheCount > 0 ? () => _clearCache(cache!) : null,
+          icon: const Icon(Icons.delete_outline),
+          label: const Text('清空缓存'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _clearCache(TranslationCache cache) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认清空'),
+        content: const Text('确定要清空所有翻译缓存吗？此操作不可恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await cache.clear();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('缓存已清空'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        setState(() {}); // 刷新UI
+      }
+    }
   }
 }
 

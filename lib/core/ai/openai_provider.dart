@@ -56,7 +56,7 @@ class OpenAIProvider implements AIProvider {
           'model': model,
           'stream': true,
           'messages': [
-            {'role': 'system', 'content': Prompts.translateSystem},
+            {'role': 'system', 'content': Prompts.translateSystem(from: from, to: to)},
             {'role': 'user', 'content': Prompts.translateUser(text)},
           ],
         },

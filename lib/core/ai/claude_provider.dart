@@ -68,7 +68,7 @@ class ClaudeProvider implements AIProvider {
           'model': model,
           'max_tokens': 4096,
           'stream': true,
-          'system': Prompts.translateSystem,
+          'system': Prompts.translateSystem(from: from, to: to),
           'messages': [
             {'role': 'user', 'content': Prompts.translateUser(text)},
           ],

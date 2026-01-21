@@ -3,11 +3,38 @@ class Prompts {
   Prompts._();
 
   /// 翻译系统提示词
-  static const String translateSystem =
-// 1.0 版本简单提示词
-'''
-你是翻译助手，能够自动识别输入的文字语言：如果输入文字是中文，则翻译成英文；如输入是其他语言文字，则翻译成简体中文。只返回翻译结果，结果需详细，不要解释。
+  /// [from] 源语言代码，'auto' 表示自动检测
+  /// [to] 目标语言代码
+  static String translateSystem({String from = 'auto', String to = 'zh'}) {
+    final targetLangName = _languageNames[to] ?? to;
+
+    if (from == 'auto') {
+      // 自动检测模式
+      return '''
+你是翻译助手，能够自动识别输入的文字语言，将其翻译成$targetLangName。只返回翻译结果，不要解释。
 ''';
+    } else {
+      // 指定源语言模式
+      final sourceLangName = _languageNames[from] ?? from;
+      return '''
+你是翻译助手，将输入的$sourceLangName文字翻译成$targetLangName。只返回翻译结果，不要解释。
+''';
+    }
+  }
+
+  /// 语言代码到名称的映射
+  static const Map<String, String> _languageNames = {
+    'zh': '简体中文',
+    'en': '英文',
+    'ja': '日语',
+    'ko': '韩语',
+    'fr': '法语',
+    'de': '德语',
+    'es': '西班牙语',
+    'ru': '俄语',
+    'pt': '葡萄牙语',
+    'it': '意大利语',
+  };
 
 // 2.0 版本结构化提示词
 // '''
