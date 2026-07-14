@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:macos_window_utils/macos_window_utils.dart';
 import 'app.dart';
@@ -11,8 +11,9 @@ import 'core/config/ai_config.dart';
 import 'core/config/settings_preferences_store.dart';
 import 'core/config/settings_repository.dart';
 import 'core/platform/hotkey_service.dart';
-import 'core/security/flutter_secure_key_value_store.dart';
-import 'core/security/provider_credential_store.dart';
+import 'core/platform/local_storage_protection.dart';
+import 'core/security/encrypted_provider_credential_store.dart';
+import 'core/security/local_master_key_store.dart';
 import 'core/ai/provider_factory.dart';
 import 'features/translate/logic/translate_controller.dart';
 
@@ -21,6 +22,8 @@ void main() async {
 
   SettingsRepository settingsRepository = const UnavailableSettingsRepository();
   AIConfig initialConfig = AIConfig(providerType: ProviderType.ollama);
+  String? settingsStorageError;
+  var hiveReady = false;
 
   try {
     // 初始化 Hive
@@ -30,19 +33,42 @@ void main() async {
     if (!Hive.isAdapterRegistered(2)) {
       Hive.registerAdapter(CachedTranslationAdapter());
     }
-
-    // 打开 Hive boxes
-    await Hive.openBox<CachedTranslation>('translation_cache');
-    final preferencesBox = await Hive.openBox<dynamic>('settings_preferences');
-    settingsRepository = PersistentSettingsRepository(
-      HiveSettingsPreferencesStore(preferencesBox),
-      SecureProviderCredentialStore(
-        const FlutterSecureKeyValueStore(FlutterSecureStorage()),
-      ),
-    );
-    initialConfig = await settingsRepository.load();
+    hiveReady = true;
   } catch (_) {
-    debugPrint('Local settings initialization failed.');
+    debugPrint('Local database initialization failed.');
+  }
+
+  if (hiveReady) {
+    try {
+      await Hive.openBox<CachedTranslation>('translation_cache');
+    } catch (_) {
+      debugPrint('Translation cache initialization failed.');
+    }
+
+    try {
+      final preferencesBox = await Hive.openBox<dynamic>(
+        'settings_preferences',
+      );
+      final credentialsBox = await Hive.openBox<dynamic>(
+        'provider_credentials',
+      );
+      final supportDirectory = await getApplicationSupportDirectory();
+      final keyFile = File('${supportDirectory.path}/.aitrans.provider.key');
+      await const LocalStorageProtection().excludeFromBackup([
+        supportDirectory.path,
+        if (credentialsBox.path != null) credentialsBox.path!,
+      ]);
+      final settingsStore = EncryptedProviderCredentialStore(
+        credentialsBox,
+        LocalMasterKeyStore(keyFile),
+        legacyPreferences: HiveSettingsPreferencesStore(preferencesBox),
+      );
+      settingsRepository = PersistentSettingsRepository(settingsStore);
+      initialConfig = await settingsRepository.load();
+    } catch (_) {
+      settingsStorageError = '本地设置读取失败，请在设置中重试或重置凭证';
+      debugPrint('Local settings initialization failed.');
+    }
   }
 
   // macOS 窗口配置
@@ -84,6 +110,9 @@ void main() async {
       overrides: [
         initialAIConfigProvider.overrideWithValue(initialConfig),
         settingsRepositoryProvider.overrideWithValue(settingsRepository),
+        initialSettingsStorageErrorProvider.overrideWithValue(
+          settingsStorageError,
+        ),
       ],
       child: const AITransApp(),
     ),

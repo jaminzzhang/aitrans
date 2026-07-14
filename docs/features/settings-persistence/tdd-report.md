@@ -7,7 +7,7 @@
 | 建议结论 | [KNOWN] `PARTIAL_VERIFICATION` |
 | 最高风险等级 | [KNOWN] P1 |
 | 模式 | [KNOWN] 受控实现 |
-| 一句话依据 | [KNOWN] 42 项测试、静态分析、macOS Debug 构建与启动通过；iOS/Android 构建受本机工具链阻断 |
+| 一句话依据 | [KNOWN] 56 项测试、静态分析、macOS Debug 构建与启动通过；iOS/Android 构建仍受本地 SDK/JDK 阻断 |
 
 ## 2. 测试目标与范围
 
@@ -27,10 +27,13 @@
 | S2-1 | [KNOWN] OpenAI 与 Qwen 使用不同凭证键 | security | P1 | P1 |
 | S2-2 | [KNOWN] 空凭证只删除当前 Provider；底层失败向上传播 | failure | P1 | P1 |
 | S3-1 | [KNOWN] repository 组合当前偏好与对应 Provider 凭证 | repository | P1 | P1 |
-| S3-2 | [KNOWN] 保存把凭证与偏好分仓；偏好失败向 UI 传播 | failure | P1 | P1 |
+| S3-2 | [KNOWN] 保存以单一 Hive 状态记录原子提交偏好与认证密文 | consistency | P1 | P1 |
 | S4-1 | [KNOWN] Provider 切换只修改 Draft，保存成功后更新全局状态 | widget/state | P1 | P1 |
 | S4-2 | [KNOWN] 保存失败与测试连接不污染生效配置 | widget/failure | P1 | P1 |
-| S5-1 | [KNOWN] macOS 安全存储插件编译、注册并完成启动读取 | platform | P1 | P1 |
+| S5-1 | [KNOWN] macOS 本地主密钥、AES-GCM 状态装配并完成启动读取 | platform | P1 | P1 |
+| S6-1 | [KNOWN] 密文存在而主密钥缺失时禁止创建替代密钥 | security/recovery | P1 | P1 |
+| S6-2 | [KNOWN] pending 密钥原子恢复、keyId 校验和瞬时失败重试 | security/recovery | P1 | P1 |
+| S7-1 | [KNOWN] Provider 异步加载期间禁用保存且不覆盖用户输入 | widget/concurrency | P1 | P1 |
 
 ## 4. Given-When-Then 用例
 
@@ -47,7 +50,7 @@
 | 项 | 规则 | 风险 |
 |---|---|---|
 | [KNOWN] Hive | [KNOWN] 使用系统临时目录中的真实 Hive box，不访问用户数据 | P1 |
-| [KNOWN] Secure storage | [KNOWN] 单元测试使用内存 fake；平台启动只执行当前 Provider 的无值读取 | P1 |
+| [KNOWN] Master key boundary | [KNOWN] 单元测试使用虚构 32-byte key 和临时目录；不读取真实本地密钥 | P1 |
 | [KNOWN] API Key fixture | [KNOWN] 仅使用 `openai-test-key`、`qwen-test-key` 等虚构值 | P1 |
 | [KNOWN] 失败注入 | [KNOWN] fake store 抛 `StateError`；UI 只断言脱敏消息 | P1 |
 | [KNOWN] 网络 | [KNOWN] 自动化测试不调用真实端点；缺密钥在请求前失败 | P1 |
@@ -65,7 +68,12 @@
 | RED-S4 | [KNOWN] UI 测试要求 repository provider 和 Draft 行为 | settings widget tests | [KNOWN] 编译失败，provider 不存在 |
 | GREEN-S4 | [KNOWN] 本地 Draft、异步 Provider 切换、测试和保存 | `settings_page.dart`, Riverpod providers | [KNOWN] 5 项设置测试通过 |
 | REFACTOR | [KNOWN] 删除含 API Key 的 Hive adapter 与错误 `copyWith(null)` 语义，配置改为 immutable | `ai_config.dart`, generated adapter | [KNOWN] 全量测试和分析通过 |
-| PLATFORM | [KNOWN] 接入 secure storage 与 Apple entitlement | dependency、main、platform files | [KNOWN] macOS Debug build/startup 通过；移动构建环境阻断 |
+| PLATFORM | [KNOWN] 改为本地 AES-GCM、原子设置状态、独立主密钥与移动端备份限制 | dependency、main、security、platform files | [KNOWN] macOS Debug build/启动通过；移动构建分别受缺失 iOS 17.5 SDK 与 Java 17 阻断 |
+| RED-S6 | [KNOWN] 篡改 envelope `keyId` 后仍可解密 | encrypted credential test | [KNOWN] 失败，证明 keyId 未校验 |
+| GREEN-S6 | [KNOWN] 校验 keyId；密文存在但密钥缺失时禁止创建；失败 Future 可重试 | security store、master key store | [KNOWN] 聚焦测试通过 |
+| RED-S7 | [KNOWN] Provider 凭证加载期间保存按钮仍可点击 | settings widget test | [KNOWN] 失败，复现误删除竞态 |
+| GREEN-S7 | [KNOWN] generation、loading、dirty 与 Draft cache 保护异步切换 | settings UI | [KNOWN] 设置页测试通过 |
+| REFACTOR-S8 | [KNOWN] 偏好与认证密文改为单一版本化状态记录一次提交 | repository/security | [KNOWN] 原子状态与失败保留旧值测试通过 |
 
 ## 7. 修改文件清单
 
@@ -74,23 +82,23 @@
 | `lib/core/config/ai_config.dart` | [KNOWN] 重构 | [KNOWN] 不可变运行时配置，不再 Hive 序列化 |
 | `lib/core/config/settings_preferences_store.dart` | [KNOWN] 新增 | [KNOWN] 非敏感 Hive 偏好 |
 | `lib/core/config/settings_repository.dart` | [KNOWN] 新增 | [KNOWN] 组合设置仓储与不可用回退 |
-| `lib/core/security/` | [KNOWN] 新增 | [KNOWN] Provider credential boundary 与 secure-storage adapter |
+| `lib/core/security/` | [KNOWN] 新增/重构 | [KNOWN] Provider credential boundary、本地主密钥和 AES-GCM adapter |
 | `lib/main.dart` | [KNOWN] 修改 | [KNOWN] 启动加载并注入初始配置/repository |
 | `lib/features/settings/ui/settings_page.dart` | [KNOWN] 修改 | [KNOWN] Draft、异步保存、清除和错误状态 |
 | `lib/features/translate/logic/translate_controller.dart` | [KNOWN] 修改 | [KNOWN] 初始配置和 repository providers |
-| `pubspec.yaml`, `pubspec.lock` | [KNOWN] 修改 | [KNOWN] `flutter_secure_storage` 10.3.1 |
-| Apple platform project/entitlements | [KNOWN] 修改 | [KNOWN] 插件注册、Swift Package 集成和 Keychain 配置 |
-| `test/core/config/`, `test/core/security/`, settings tests | [KNOWN] 新增/修改 | [KNOWN] 15 项功能聚焦测试；全仓合计 42 项 |
+| `pubspec.yaml`, `pubspec.lock` | [KNOWN] 修改 | [KNOWN] `cryptography` 与 `path_provider`；移除 `flutter_secure_storage` |
+| Apple platform project/entitlements | [KNOWN] 用户改动保留 | [KNOWN] iOS 签名工程变更未因本需求覆盖 |
+| `test/core/config/`, `test/core/security/`, settings tests | [KNOWN] 新增/修改 | [KNOWN] 原子状态、AAD/keyId、篡改、密钥缺失/pending、重试、并发和 UI 竞态；全仓合计 56 项 |
 
 ## 8. 受限命令执行记录
 
 | 命令 | 范围 | 是否执行 | 结果 | 未执行原因 |
 |---|---|---|---|---|
-| `dart format --output=none --set-exit-if-changed lib test` | 全 Dart | [KNOWN] 是 | [KNOWN] 43 files，0 changed |
+| `dart format lib test` | 全 Dart | [KNOWN] 是 | [KNOWN] 46 files，格式化完成 |
 | `flutter analyze` | 全项目 | [KNOWN] 是 | [KNOWN] No issues found |
-| `flutter test --concurrency=1` | 全测试 | [KNOWN] 是 | [KNOWN] 42 passed |
+| `flutter test --concurrency=1` | 全测试 | [KNOWN] 是 | [KNOWN] 56 passed |
 | `flutter build macos --debug` | macOS | [KNOWN] 是 | [KNOWN] 成功生成 Debug app |
-| `flutter run -d macos` | macOS 启动 | [KNOWN] 是 | [KNOWN] 插件注册和初始 secure read 无异常，随后正常退出 |
+| `flutter run -d macos` | macOS 启动 | [KNOWN] 是 | [KNOWN] 首次因旧实例 Hive 锁降级；锁释放后重跑无设置存储异常并正常退出 |
 | `flutter build ios --debug --no-codesign` | iOS | [KNOWN] 是 | [KNOWN] 失败：本机未安装 iOS 17.5 platform | [KNOWN] 环境组件缺失 |
 | `flutter build apk --debug` | Android | [KNOWN] 是 | [KNOWN] 失败：当前 JDK 11，Android Gradle Plugin 要求 Java 17 | [KNOWN] 本机 JDK 配置不满足 |
 
@@ -98,10 +106,9 @@
 
 | 问题 | 等级 | 影响 | 建议动作 | 建议确认人 |
 |---|---|---|---|---|
-| [KNOWN] iOS 构建未完成 | P1 | [KNOWN] Keychain 插件与 entitlement 未在 iOS 编译验证 | [KNOWN] 安装匹配 iOS platform 后重跑无签名构建 | [KNOWN] 研发负责人 |
-| [KNOWN] Android 构建未完成 | P1 | [KNOWN] Keystore adapter 与 minSdk 未进入编译验证 | [KNOWN] 将 Flutter JDK 指向 Java 17 后重跑 APK 构建 | [KNOWN] 研发负责人 |
-| [KNOWN] Apple Release entitlement 需要签名证书 | P1 | [KNOWN] 当前只验证无共享 entitlement 的 macOS Debug 私有 Data Protection Keychain | [KNOWN] 发布签名前验证 Release Keychain entitlement 和读写 | [KNOWN] 发布/研发负责人 |
-| [KNOWN] 跨存储无共享事务 | P1 | [KNOWN] credential 写成功而 preferences 写失败时可能留下未激活凭证 | [KNOWN] 应用状态保持旧值并允许重试；未来需要强一致时引入恢复日志 | [KNOWN] 研发负责人 |
+| [KNOWN] iOS 构建未完成 | P1 | [KNOWN] 本地加密实现尚未在 iOS 编译验证 | [KNOWN] 安装匹配 iOS platform 后重跑无签名构建 | [KNOWN] 研发负责人 |
+| [KNOWN] Android 构建未完成 | P1 | [KNOWN] 当前 JDK 11，Android Gradle Plugin 要求 Java 17；禁止备份 manifest 尚未编译验证 | [KNOWN] 将 Flutter JDK 指向 Java 17 后重跑 APK 构建 | [KNOWN] 研发负责人 |
+| [KNOWN] 本地密钥文件与密文同属当前用户可读边界 | P1 | [KNOWN] 同一用户权限的攻击者可能同时取得主密钥和密文 | [KNOWN] 发布说明明确安全边界；若需抵抗该攻击者，恢复 OS secure storage 或口令解锁 | [KNOWN] 安全负责人 |
 | [KNOWN] 旧 `ai_config` box 未删除 | P2 | [KNOWN] 已知实现从未写入，但历史设备文件仍可能存在 | [KNOWN] 若有真实历史版本曾写入，另立安全迁移并在确认后清理 | [KNOWN] 产品/安全负责人 |
 
 ## 10. 上下文更新建议

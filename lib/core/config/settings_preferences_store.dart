@@ -73,13 +73,11 @@ class HiveSettingsPreferencesStore implements SettingsPreferencesStore {
       return _defaults;
     }
 
-    final providerType = ProviderType.values.where(
-      (type) => type.name == providerName,
-    );
-    if (providerType.isEmpty) return _defaults;
+    final providerType = providerTypeFromPersistenceId(providerName);
+    if (providerType == null) return _defaults;
 
     return ProviderPreferences(
-      providerType: providerType.single,
+      providerType: providerType,
       baseUrl: baseUrl as String?,
       model: model as String?,
     );
@@ -89,7 +87,7 @@ class HiveSettingsPreferencesStore implements SettingsPreferencesStore {
   Future<void> save(ProviderPreferences preferences) {
     return _box.put(preferencesKey, <String, Object?>{
       'schemaVersion': _schemaVersion,
-      'providerType': preferences.providerType.name,
+      'providerType': preferences.providerType.persistenceId,
       'baseUrl': preferences.baseUrl,
       'model': preferences.model,
     });

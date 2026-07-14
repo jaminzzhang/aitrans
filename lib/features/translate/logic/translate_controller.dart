@@ -16,6 +16,12 @@ final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
   return const UnavailableSettingsRepository();
 });
 
+final initialSettingsStorageErrorProvider = Provider<String?>((ref) => null);
+
+final settingsStorageErrorProvider = StateProvider<String?>((ref) {
+  return ref.watch(initialSettingsStorageErrorProvider);
+});
+
 final aiConfigProvider = StateProvider<AIConfig>((ref) {
   return ref.watch(initialAIConfigProvider);
 });

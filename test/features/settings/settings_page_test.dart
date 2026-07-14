@@ -52,4 +52,7 @@ class _UnusedSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> save(AIConfig config) async {}
+
+  @override
+  Future<void> resetCredentials() async {}
 }

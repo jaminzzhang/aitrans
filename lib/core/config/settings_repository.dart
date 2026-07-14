@@ -1,7 +1,16 @@
 import '../ai/provider_factory.dart';
-import '../security/provider_credential_store.dart';
 import 'ai_config.dart';
 import 'settings_preferences_store.dart';
+
+abstract interface class SettingsPersistenceStore {
+  Future<ProviderPreferences> loadPreferences();
+
+  Future<String?> readCredential(ProviderType providerType);
+
+  Future<void> saveConfig(AIConfig config);
+
+  Future<void> resetCredentials();
+}
 
 abstract interface class SettingsRepository {
   Future<AIConfig> load();
@@ -9,6 +18,8 @@ abstract interface class SettingsRepository {
   Future<AIConfig> loadProviderDraft(ProviderType providerType);
 
   Future<void> save(AIConfig config);
+
+  Future<void> resetCredentials();
 }
 
 class UnavailableSettingsRepository implements SettingsRepository {
@@ -26,30 +37,34 @@ class UnavailableSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> save(AIConfig config) => Future.error(_error());
+
+  @override
+  Future<void> resetCredentials() => Future.error(_error());
 }
 
 class PersistentSettingsRepository implements SettingsRepository {
-  PersistentSettingsRepository(this._preferences, this._credentials);
+  PersistentSettingsRepository(this._store);
 
-  final SettingsPreferencesStore _preferences;
-  final ProviderCredentialStore _credentials;
+  final SettingsPersistenceStore _store;
 
   @override
   Future<AIConfig> load() async {
-    final preferences = await _preferences.load();
-    final apiKey = await _credentials.read(preferences.providerType);
+    final preferences = await _store.loadPreferences();
+    final apiKey = await _store.readCredential(preferences.providerType);
     return preferences.toConfig(apiKey: apiKey);
   }
 
   @override
   Future<AIConfig> loadProviderDraft(ProviderType providerType) async {
-    final apiKey = await _credentials.read(providerType);
+    final apiKey = await _store.readCredential(providerType);
     return AIConfig(providerType: providerType, apiKey: apiKey);
   }
 
   @override
   Future<void> save(AIConfig config) async {
-    await _credentials.write(config.providerType, config.apiKey);
-    await _preferences.save(ProviderPreferences.fromConfig(config));
+    await _store.saveConfig(config);
   }
+
+  @override
+  Future<void> resetCredentials() => _store.resetCredentials();
 }

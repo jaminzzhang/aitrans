@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aitrans/core/ai/provider_factory.dart';
 import 'package:aitrans/core/config/ai_config.dart';
 import 'package:aitrans/core/config/settings_repository.dart';
@@ -12,6 +14,7 @@ Future<ProviderContainer> _openSheet(
   WidgetTester tester, {
   required AIConfig initialConfig,
   required _FakeSettingsRepository repository,
+  String? storageError,
 }) async {
   // 设置页以 dialog 形式呈现：直接 pump 一个 SettingsSheet。
   // 给足视口高度，让 sheet 内容（含底部「保存」按钮）可见可点击。
@@ -23,6 +26,7 @@ Future<ProviderContainer> _openSheet(
       overrides: [
         aiConfigProvider.overrideWith((ref) => initialConfig),
         settingsRepositoryProvider.overrideWithValue(repository),
+        initialSettingsStorageErrorProvider.overrideWithValue(storageError),
       ],
       child: MaterialApp(
         theme: AppTheme.light(),
@@ -186,15 +190,85 @@ void main() {
         expect(find.text('连接失败，请检查配置'), findsOneWidget);
       },
     );
+
+    testWidgets(
+      'provider loading disables save and does not overwrite user input',
+      (tester) async {
+        final completer = Completer<AIConfig>();
+        final repository = _FakeSettingsRepository(
+          draftCompleters: {ProviderType.qwen: completer},
+        );
+        await _openSheet(
+          tester,
+          initialConfig: AIConfig(providerType: ProviderType.ollama),
+          repository: repository,
+        );
+
+        await tester.tap(find.byType(DropdownButton<ProviderType>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Qwen').last);
+        await tester.pump();
+
+        await tester.drag(find.byType(ListView).first, const Offset(0, -600));
+        await tester.pump();
+        final saveInkWell = tester.widget<InkWell>(
+          find.ancestor(of: find.text('保存'), matching: find.byType(InkWell)),
+        );
+        expect(saveInkWell.onTap, isNull);
+
+        await tester.enterText(find.byType(TextField).first, 'typed-key');
+        completer.complete(
+          AIConfig(providerType: ProviderType.qwen, apiKey: 'stored-key'),
+        );
+        await tester.pumpAndSettle();
+
+        final apiKeyField = tester.widget<TextField>(
+          find.byType(TextField).first,
+        );
+        expect(apiKeyField.controller?.text, 'typed-key');
+      },
+    );
+
+    testWidgets(
+      'storage failure offers an explicit confirmed credential reset',
+      (tester) async {
+        final repository = _FakeSettingsRepository();
+        await _openSheet(
+          tester,
+          initialConfig: AIConfig(
+            providerType: ProviderType.qwen,
+            apiKey: 'runtime-key',
+          ),
+          repository: repository,
+          storageError: '本地设置读取失败，请在设置中重试或重置凭证',
+        );
+
+        await tester.tap(find.text('重置凭证'));
+        await tester.pumpAndSettle();
+        expect(find.text('重置本地凭证？'), findsOneWidget);
+        await tester.tap(find.text('确认重置'));
+        await tester.pumpAndSettle();
+
+        expect(repository.resetCount, 1);
+        expect(find.text('本地凭证已重置'), findsOneWidget);
+        expect(find.text('重置凭证'), findsNothing);
+      },
+    );
   });
 }
 
 class _FakeSettingsRepository implements SettingsRepository {
-  _FakeSettingsRepository({this.drafts = const {}, this.failSave = false});
+  _FakeSettingsRepository({
+    this.drafts = const {},
+    this.draftCompleters = const {},
+    this.failSave = false,
+  });
 
   final Map<ProviderType, AIConfig> drafts;
+  final Map<ProviderType, Completer<AIConfig>> draftCompleters;
   final bool failSave;
   AIConfig? saved;
+  int resetCount = 0;
 
   @override
   Future<AIConfig> load() async {
@@ -203,6 +277,8 @@ class _FakeSettingsRepository implements SettingsRepository {
 
   @override
   Future<AIConfig> loadProviderDraft(ProviderType providerType) async {
+    final completer = draftCompleters[providerType];
+    if (completer != null) return completer.future;
     return drafts[providerType] ?? AIConfig(providerType: providerType);
   }
 
@@ -211,4 +287,7 @@ class _FakeSettingsRepository implements SettingsRepository {
     if (failSave) throw StateError('synthetic settings failure');
     saved = config;
   }
+
+  @override
+  Future<void> resetCredentials() async => resetCount++;
 }

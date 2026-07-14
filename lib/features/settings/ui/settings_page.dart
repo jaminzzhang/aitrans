@@ -24,9 +24,14 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
   final _modelController = TextEditingController();
   bool _isTestingConnection = false;
   bool _isSaving = false;
+  bool _isResettingCredentials = false;
+  bool _isLoadingProvider = false;
+  bool _credentialEditedWhileLoading = false;
+  int _providerLoadGeneration = 0;
   String? _connectionStatus;
   bool _connectionOk = false;
   late ProviderType _selectedProvider;
+  final Map<ProviderType, AIConfig> _drafts = {};
 
   @override
   void initState() {
@@ -36,6 +41,7 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
     _apiKeyController.text = config.apiKey ?? '';
     _baseUrlController.text = config.baseUrl ?? '';
     _modelController.text = config.model ?? '';
+    _drafts[config.providerType] = config;
   }
 
   @override
@@ -59,6 +65,7 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
   }
 
   Future<void> _testConnection() async {
+    if (_isLoadingProvider) return;
     setState(() {
       _isTestingConnection = true;
       _connectionStatus = null;
@@ -98,10 +105,21 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
 
   Future<void> _selectProvider(ProviderType type) async {
     if (type == _selectedProvider) return;
+    _drafts[_selectedProvider] = _buildDraft();
+    final generation = ++_providerLoadGeneration;
     setState(() {
       _selectedProvider = type;
       _connectionStatus = null;
+      _credentialEditedWhileLoading = false;
     });
+
+    final cached = _drafts[type];
+    if (cached != null) {
+      _applyDraft(cached);
+      return;
+    }
+
+    setState(() => _isLoadingProvider = true);
     _baseUrlController.clear();
     _modelController.clear();
     _apiKeyController.clear();
@@ -110,19 +128,43 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
       final draft = await ref
           .read(settingsRepositoryProvider)
           .loadProviderDraft(type);
-      if (!mounted || _selectedProvider != type) return;
-      _apiKeyController.text = draft.apiKey ?? '';
+      if (!mounted ||
+          _selectedProvider != type ||
+          generation != _providerLoadGeneration) {
+        return;
+      }
+      if (!_credentialEditedWhileLoading) {
+        _apiKeyController.text = draft.apiKey ?? '';
+      }
+      _drafts[type] = _buildDraft();
     } catch (_) {
-      if (!mounted || _selectedProvider != type) return;
+      if (!mounted ||
+          _selectedProvider != type ||
+          generation != _providerLoadGeneration) {
+        return;
+      }
       setState(() {
         _connectionOk = false;
         _connectionStatus = '凭证读取失败，请重试';
       });
+    } finally {
+      if (mounted &&
+          _selectedProvider == type &&
+          generation == _providerLoadGeneration) {
+        setState(() => _isLoadingProvider = false);
+      }
     }
   }
 
+  void _applyDraft(AIConfig draft) {
+    _apiKeyController.text = draft.apiKey ?? '';
+    _baseUrlController.text = draft.baseUrl ?? '';
+    _modelController.text = draft.model ?? '';
+    if (mounted) setState(() => _isLoadingProvider = false);
+  }
+
   Future<void> _save() async {
-    if (_isSaving) return;
+    if (_isSaving || _isLoadingProvider) return;
     final draft = _buildDraft();
     setState(() {
       _isSaving = true;
@@ -132,6 +174,7 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
       await ref.read(settingsRepositoryProvider).save(draft);
       if (!mounted) return;
       ref.read(aiConfigProvider.notifier).state = draft;
+      ref.read(settingsStorageErrorProvider.notifier).state = null;
       Navigator.of(context).maybePop();
     } catch (_) {
       if (!mounted) return;
@@ -144,10 +187,62 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
     }
   }
 
+  Future<void> _resetCredentials() async {
+    if (_isResettingCredentials) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('重置本地凭证？'),
+        content: const Text('这会删除所有本地 API Key。Provider、Base URL 和模型设置会保留。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('确认重置'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isResettingCredentials = true);
+    try {
+      await ref.read(settingsRepositoryProvider).resetCredentials();
+      if (!mounted) return;
+      _apiKeyController.clear();
+      _drafts.clear();
+      final current = ref.read(aiConfigProvider);
+      final resetConfig = AIConfig(
+        providerType: current.providerType,
+        baseUrl: current.baseUrl,
+        model: current.model,
+      );
+      _drafts[current.providerType] = resetConfig;
+      ref.read(aiConfigProvider.notifier).state = resetConfig;
+      ref.read(settingsStorageErrorProvider.notifier).state = null;
+      setState(() {
+        _connectionOk = true;
+        _connectionStatus = '本地凭证已重置';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _connectionOk = false;
+        _connectionStatus = '凭证重置失败，请重试';
+      });
+    } finally {
+      if (mounted) setState(() => _isResettingCredentials = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
+    final storageError = ref.watch(settingsStorageErrorProvider);
 
     return Center(
       child: Container(
@@ -183,11 +278,44 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
 
                     _SectionLabel(text: 'API 配置'),
                     const SizedBox(height: AppSpacing.sm),
+                    if (storageError != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(AppSpacing.sm),
+                        decoration: BoxDecoration(
+                          color: palette.error.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(AppRadii.sm),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                storageError,
+                                style: AppTypography.caption(
+                                  base.labelSmall!,
+                                ).copyWith(color: palette.error),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _isResettingCredentials
+                                  ? null
+                                  : _resetCredentials,
+                              child: const Text('重置凭证'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                    ],
                     _Field(
                       controller: _apiKeyController,
                       label: 'API Key',
                       hint: '输入你的 API Key',
                       obscure: true,
+                      onChanged: (_) {
+                        if (_isLoadingProvider) {
+                          _credentialEditedWhileLoading = true;
+                        }
+                      },
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     _Field(
@@ -209,7 +337,7 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
                           child: _SecondaryButton(
                             label: '测试连接',
                             loading: _isTestingConnection,
-                            onTap: _isTestingConnection
+                            onTap: _isTestingConnection || _isLoadingProvider
                                 ? null
                                 : _testConnection,
                           ),
@@ -218,7 +346,9 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
                         Expanded(
                           child: _PrimaryButton(
                             label: _isSaving ? '保存中…' : '保存',
-                            onTap: _isSaving ? null : _save,
+                            onTap: _isSaving || _isLoadingProvider
+                                ? null
+                                : _save,
                           ),
                         ),
                       ],
@@ -366,11 +496,13 @@ class _Field extends StatefulWidget {
   final String label;
   final String? hint;
   final bool obscure;
+  final ValueChanged<String>? onChanged;
   const _Field({
     required this.controller,
     required this.label,
     this.hint,
     this.obscure = false,
+    this.onChanged,
   });
 
   @override
@@ -408,6 +540,7 @@ class _FieldState extends State<_Field> {
                   ),
                   TextField(
                     controller: widget.controller,
+                    onChanged: widget.onChanged,
                     obscureText: obscure,
                     style: AppTypography.bodyMuted(
                       base.bodyMedium!,

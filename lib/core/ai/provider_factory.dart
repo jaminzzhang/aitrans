@@ -6,6 +6,24 @@ import '../config/ai_config.dart';
 /// Provider 类型枚举
 enum ProviderType { openai, claude, ollama, deepseek, custom, qwen }
 
+extension ProviderTypePersistence on ProviderType {
+  String get persistenceId => switch (this) {
+    ProviderType.openai => 'openai',
+    ProviderType.claude => 'claude',
+    ProviderType.ollama => 'ollama',
+    ProviderType.deepseek => 'deepseek',
+    ProviderType.custom => 'custom',
+    ProviderType.qwen => 'qwen',
+  };
+}
+
+ProviderType? providerTypeFromPersistenceId(String value) {
+  for (final type in ProviderType.values) {
+    if (type.persistenceId == value) return type;
+  }
+  return null;
+}
+
 class AIConfigurationException implements Exception {
   final String message;
 

@@ -37,12 +37,13 @@ dependencies:
   # Network & API
   dio: ^5.7.0
   crypto: ^3.0.6
+  cryptography: ^2.9.0
   openai_dart: ^7.0.1
 
   # Local Storage
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  flutter_secure_storage: ^10.3.1
+  path_provider: ^2.1.5
 
   # macOS Features
   hotkey_manager: ^0.2.3
