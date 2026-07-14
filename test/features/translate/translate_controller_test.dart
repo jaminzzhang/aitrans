@@ -46,6 +46,27 @@ void main() {
       expect((controller.state as TranslateComplete).text, 'fresh:second');
     },
   );
+
+  test(
+    'an older stream event cannot overwrite the latest translation',
+    () async {
+      final provider = _ControlledProvider();
+      final controller = TranslateController(provider, null);
+      addTearDown(controller.dispose);
+
+      controller.translateNow('first');
+      controller.translateNow('second');
+      provider.emit('second', 'latest');
+      await pumpEventQueue();
+      expect(controller.state, isA<TranslateStreaming>());
+      expect((controller.state as TranslateStreaming).text, 'latest');
+
+      provider.emit('first', 'stale');
+      await pumpEventQueue();
+      expect(controller.state, isA<TranslateStreaming>());
+      expect((controller.state as TranslateStreaming).text, 'latest');
+    },
+  );
 }
 
 class _FakeProvider extends AIProvider {
@@ -93,4 +114,39 @@ class _DelayedCache implements TranslationCacheStore {
 
   void completeLookupAt(int index, String? value) =>
       _lookups[index].complete(value);
+}
+
+class _ControlledProvider extends AIProvider {
+  final Map<String, StreamController<TranslationResult>> _controllers = {};
+
+  @override
+  String get name => 'Controlled';
+
+  @override
+  Future<bool> testConnection() async => true;
+
+  @override
+  Stream<TranslationResult> translate({
+    required String text,
+    String from = 'auto',
+    String to = 'zh',
+  }) {
+    return (_controllers[text] ??= StreamController<TranslationResult>())
+        .stream;
+  }
+
+  void emit(String requestText, String resultText) {
+    _controllers[requestText]!.add(
+      TranslationResult(text: resultText, isComplete: false),
+    );
+  }
+
+  @override
+  Stream<List<Example>> getExamples(String word) => const Stream.empty();
+
+  @override
+  Stream<List<MovieQuote>> getMovieQuotes(String word) => const Stream.empty();
+
+  @override
+  Stream<List<ExamItem>> getExamItems(String word) => const Stream.empty();
 }

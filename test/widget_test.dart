@@ -1,5 +1,7 @@
 import 'package:aitrans/app.dart';
 import 'package:aitrans/core/ai/ai_provider.dart';
+import 'package:aitrans/core/platform/external_translation_request.dart';
+import 'package:aitrans/features/translate/logic/external_translation_coordinator.dart';
 import 'package:aitrans/features/translate/logic/translate_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -58,5 +60,71 @@ void main() {
 
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('AI 服务'), findsOneWidget);
+  });
+
+  testWidgets('overlong external selection shows a safe error', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: AITransApp()));
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(AITransApp)),
+      listen: false,
+    );
+
+    container
+        .read(externalTranslationCoordinatorProvider.notifier)
+        .handle(
+          sequence: 1,
+          source: ExternalTranslationSource.macosService,
+          text: List.filled(5001, 'a').join(),
+        );
+    await tester.pump();
+
+    expect(find.text('所选文本过长，请缩短至 5,000 字符以内'), findsOneWidget);
+  });
+
+  testWidgets('bridge failure shows a safe error without native details', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const ProviderScope(child: AITransApp()));
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(AITransApp)),
+      listen: false,
+    );
+
+    container.read(externalTranslationBridgeStatusProvider.notifier).state =
+        ExternalTranslationBridgeStatus.unavailable;
+    await tester.pump();
+
+    expect(find.text('无法启用系统翻译服务，请重新启动 AITrans。'), findsOneWidget);
+  });
+
+  testWidgets('accepted external selection closes settings and shows input', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [aiProviderProvider.overrideWith((_) => _NullAIProvider())],
+        child: const AITransApp(),
+      ),
+    );
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('设置'), findsOneWidget);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(AITransApp)),
+      listen: false,
+    );
+
+    container
+        .read(externalTranslationCoordinatorProvider.notifier)
+        .handle(
+          sequence: 1,
+          source: ExternalTranslationSource.macosService,
+          text: 'selected text',
+        );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('设置'), findsNothing);
+    expect(find.text('selected text'), findsOneWidget);
   });
 }

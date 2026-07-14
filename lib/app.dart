@@ -5,6 +5,7 @@ import 'shared/theme/app_theme.dart';
 import 'shared/theme/app_tokens.dart';
 import 'features/translate/ui/translate_page.dart';
 import 'features/settings/ui/settings_page.dart';
+import 'features/translate/logic/external_translation_coordinator.dart';
 
 /// 应用根组件。
 class AITransApp extends ConsumerWidget {
@@ -12,6 +13,7 @@ class AITransApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(externalTranslationPlatformBridgeProvider);
     return MaterialApp(
       title: 'AITrans',
       debugShowCheckedModeBanner: false,
@@ -30,11 +32,39 @@ class AITransApp extends ConsumerWidget {
 ///   2. 翻译内容区（输入条 + 结果文档）。
 ///
 /// 设置不再是常驻页面，由齿轮弹出的浮层承载。
-class AppShell extends StatelessWidget {
+class AppShell extends ConsumerWidget {
   const AppShell({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<ExternalTranslationHandlingState>(
+      externalTranslationCoordinatorProvider,
+      (previous, next) {
+        if (next is ExternalTranslationAccepted) {
+          Navigator.of(
+            context,
+            rootNavigator: true,
+          ).popUntil((route) => route.isFirst);
+        }
+        if (next case ExternalTranslationRejected(:final userMessage?)) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(content: Text(userMessage)));
+        }
+      },
+    );
+    ref.listen<ExternalTranslationBridgeStatus>(
+      externalTranslationBridgeStatusProvider,
+      (previous, next) {
+        if (next == ExternalTranslationBridgeStatus.unavailable) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('无法启用系统翻译服务，请重新启动 AITrans。')),
+            );
+        }
+      },
+    );
     return const Scaffold(
       body: Column(
         children: [

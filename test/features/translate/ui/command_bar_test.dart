@@ -10,7 +10,13 @@ import 'package:flutter_test/flutter_test.dart';
 class _RecordingTranslateController extends TranslateController {
   _RecordingTranslateController() : super(_NullAIProvider(), null);
   int translateNowCalls = 0;
+  int onTextChangedCalls = 0;
   String? lastSubmitted;
+
+  @override
+  void onTextChanged(String text) {
+    onTextChangedCalls++;
+  }
 
   @override
   void translateNow(String text) {
@@ -139,5 +145,35 @@ void main() {
       await tester.pump();
       expect(find.byIcon(Icons.close_rounded), findsOneWidget);
     });
+
+    testWidgets(
+      'external input state updates the field without simulating manual typing',
+      (tester) async {
+        final controller = _RecordingTranslateController();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              translateControllerProvider.overrideWith((_) => controller),
+            ],
+            child: MaterialApp(
+              theme: AppTheme.light(),
+              home: const Scaffold(body: CommandBar()),
+            ),
+          ),
+        );
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(CommandBar)),
+          listen: false,
+        );
+
+        container.read(inputTextProvider.notifier).state = 'selected elsewhere';
+        await tester.pump();
+
+        final field = tester.widget<TextField>(find.byType(TextField));
+        expect(field.controller!.text, 'selected elsewhere');
+        expect(field.controller!.selection.baseOffset, 18);
+        expect(controller.onTextChangedCalls, 0);
+      },
+    );
   });
 }

@@ -54,11 +54,20 @@ class _CommandBarState extends ConsumerState<CommandBar> {
     _focusNode.requestFocus();
   }
 
+  void _syncExternalInput(String inputText) {
+    if (_controller.text == inputText) return;
+    _controller.value = TextEditingValue(
+      text: inputText,
+      selection: TextSelection.collapsed(offset: inputText.length),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
     final inputText = ref.watch(inputTextProvider);
+    _syncExternalInput(inputText);
     // Android 退化：BackdropFilter 在低端机掉帧，改纯色 + 亮边。
     final useBlur = !Platform.isAndroid;
 
