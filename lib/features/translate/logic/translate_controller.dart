@@ -14,10 +14,51 @@ final aiConfigProvider = StateProvider<AIConfig>((ref) {
 /// AI Provider 实例
 final aiProviderProvider = Provider<AIProvider>((ref) {
   final config = ref.watch(aiConfigProvider);
-  final provider = ProviderFactory.create(config);
+  late final AIProvider provider;
+  try {
+    provider = ProviderFactory.create(config);
+  } on AIConfigurationException catch (error) {
+    provider = _UnavailableAIProvider(
+      ProviderFactory.providerName(config.providerType),
+      error.message,
+    );
+  }
   ref.onDispose(provider.close);
   return provider;
 });
+
+class _UnavailableAIProvider extends AIProvider {
+  _UnavailableAIProvider(this.name, this._message);
+
+  @override
+  final String name;
+
+  final String _message;
+
+  AIProviderException get _error => AIProviderException(
+    code: AIProviderErrorCode.invalidConfiguration,
+    message: _message,
+  );
+
+  @override
+  Future<bool> testConnection() async => false;
+
+  @override
+  Stream<TranslationResult> translate({
+    required String text,
+    String from = 'auto',
+    String to = 'zh',
+  }) => Stream.error(_error);
+
+  @override
+  Stream<List<Example>> getExamples(String word) => const Stream.empty();
+
+  @override
+  Stream<List<MovieQuote>> getMovieQuotes(String word) => const Stream.empty();
+
+  @override
+  Stream<List<ExamItem>> getExamItems(String word) => const Stream.empty();
+}
 
 /// 翻译缓存 Provider
 final translationCacheProvider = Provider<TranslationCache?>((ref) {

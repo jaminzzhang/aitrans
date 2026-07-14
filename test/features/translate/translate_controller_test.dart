@@ -1,12 +1,30 @@
 import 'dart:async';
 
 import 'package:aitrans/core/ai/ai_provider.dart';
+import 'package:aitrans/core/ai/provider_factory.dart';
 import 'package:aitrans/core/cache/translation_cache.dart';
+import 'package:aitrans/core/config/ai_config.dart';
 import 'package:aitrans/features/translate/logic/translate_controller.dart';
 import 'package:aitrans/features/translate/models/translate_state.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('invalid provider config does not break the provider graph', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    container.read(aiConfigProvider.notifier).state = AIConfig(
+      providerType: ProviderType.qwen,
+    );
+
+    final provider = container.read(aiProviderProvider);
+    await expectLater(
+      provider.translate(text: 'hello'),
+      emitsError(isA<AIProviderException>()),
+    );
+  });
+
   test(
     'an older cache lookup cannot overwrite the latest translation',
     () async {
