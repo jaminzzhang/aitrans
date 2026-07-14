@@ -4,6 +4,11 @@
 *.pyc
 *.swp
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+Desktop.ini
 .atom/
 .build/
 .buildlog/
@@ -12,11 +17,18 @@
 .swiftpm/
 migrate_working_dir/
 
+# Local environment and secret files
+.env
+.env.*
+!.env.example
+!.env.template
+
 # IntelliJ related
 *.iml
 *.ipr
 *.iws
 .idea/
+.fleet/
 
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
@@ -27,7 +39,9 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
 /build/
@@ -40,6 +54,12 @@ app.*.symbols
 app.*.map.json
 
 # Android Studio will place build artifacts here
+/android/build/
+/android/app/build/
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Apple platform build and user-specific artifacts
+**/DerivedData/
+**/*.xcuserstate
