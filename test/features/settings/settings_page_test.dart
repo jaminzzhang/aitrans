@@ -19,10 +19,10 @@ void main() {
       ),
     );
 
-    expect(find.text('Qwen'), findsOneWidget);
-    await tester.ensureVisible(find.text('Qwen'));
-    await tester.tap(find.text('Qwen'));
-    await tester.pump();
+    await tester.tap(find.byType(DropdownButton<ProviderType>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Qwen').last);
+    await tester.pumpAndSettle();
 
     expect(container.read(aiConfigProvider).providerType, ProviderType.qwen);
     expect(

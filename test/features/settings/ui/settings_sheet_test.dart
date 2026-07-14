@@ -28,13 +28,16 @@ void main() {
     testWidgets('lists all providers including Qwen (6 total)', (tester) async {
       await _openSheet(tester);
 
-      // 通过工厂期望的 providerName 断言每一项都渲染。
+      // 打开下拉，菜单展开后断言每一项都渲染。
+      await tester.tap(find.byType(DropdownButton<ProviderType>));
+      await tester.pumpAndSettle();
+
       for (final type in ProviderType.values) {
         final name = ProviderFactory.providerName(type);
         expect(
           find.text(name),
           findsWidgets,
-          reason: 'provider row $name missing',
+          reason: 'provider item $name missing in dropdown',
         );
       }
     });
@@ -49,10 +52,12 @@ void main() {
           listen: false,
         );
 
-        // 当前默认为 openai（aiConfigProvider 初始值）。点选 Qwen 行。
+        // 打开下拉并选择 Qwen 项。
+        await tester.tap(find.byType(DropdownButton<ProviderType>));
+        await tester.pumpAndSettle();
         final qwenName = ProviderFactory.providerName(ProviderType.qwen);
-        await tester.tap(find.text(qwenName).first);
-        await tester.pump();
+        await tester.tap(find.text(qwenName).last);
+        await tester.pumpAndSettle();
 
         expect(
           container.read(aiConfigProvider).providerType,

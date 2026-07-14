@@ -14,7 +14,7 @@ class TranslatePage extends StatelessWidget {
     return const Padding(
       padding: EdgeInsets.fromLTRB(
         AppSpacing.md,
-        AppSpacing.sm,
+        AppSpacing.md,
         AppSpacing.md,
         0,
       ),

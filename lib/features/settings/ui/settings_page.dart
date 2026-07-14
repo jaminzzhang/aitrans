@@ -130,7 +130,7 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
                   children: [
                     _SectionLabel(text: 'AI 服务'),
                     const SizedBox(height: AppSpacing.sm),
-                    _ProviderList(
+                    _ProviderDropdown(
                       selected: config.providerType,
                       onSelect: _selectProvider,
                     ),
@@ -270,70 +270,48 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-class _ProviderList extends StatelessWidget {
+/// AI 服务下拉选择框。
+///
+/// 用与输入框一致的 elevated 容器，内嵌无边框 DropdownButton，保持极简。
+class _ProviderDropdown extends StatelessWidget {
   final ProviderType selected;
   final ValueChanged<ProviderType> onSelect;
-  const _ProviderList({required this.selected, required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        for (final type in ProviderType.values)
-          _ProviderRow(
-            type: type,
-            selected: type == selected,
-            onTap: () => onSelect(type),
-          ),
-      ],
-    );
-  }
-}
-
-class _ProviderRow extends StatelessWidget {
-  final ProviderType type;
-  final bool selected;
-  final VoidCallback onTap;
-  const _ProviderRow({
-    required this.type,
-    required this.selected,
-    required this.onTap,
-  });
+  const _ProviderDropdown({required this.selected, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
-    final name = ProviderFactory.providerName(type);
     return Material(
-      color: Colors.transparent,
+      color: palette.surfaceElevated.withValues(alpha: 0.5),
       borderRadius: BorderRadius.circular(AppRadii.sm),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadii.sm),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm,
-            vertical: AppSpacing.sm + 2,
-          ),
-          child: Row(
-            children: [
-              Icon(
-                selected
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
-                size: 18,
-                color: selected ? palette.accent : palette.inkTertiary,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Text(
-                name,
-                style: AppTypography.body(base.bodyLarge!).copyWith(
-                  color: selected ? palette.inkPrimary : palette.inkSecondary,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm + 2),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<ProviderType>(
+            value: selected,
+            isExpanded: true,
+            autofocus: false,
+            icon: Icon(
+              Icons.unfold_more_rounded,
+              size: 16,
+              color: palette.inkTertiary,
+            ),
+            style: AppTypography.bodyMuted(
+              base.bodyMedium!,
+            ).copyWith(color: palette.inkPrimary),
+            dropdownColor: palette.surface,
+            borderRadius: BorderRadius.circular(AppRadii.sm),
+            items: [
+              for (final type in ProviderType.values)
+                DropdownMenuItem(
+                  value: type,
+                  child: Text(ProviderFactory.providerName(type)),
                 ),
-              ),
             ],
+            onChanged: (value) {
+              if (value != null) onSelect(value);
+            },
           ),
         ),
       ),
