@@ -2,10 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'ai_provider.dart';
-import 'prompts.dart';
 
 /// Claude Provider 实现
-class ClaudeProvider implements AIProvider {
+class ClaudeProvider extends AIProvider {
   final Dio _dio;
   final String apiKey;
   final String baseUrl;
@@ -20,6 +19,9 @@ class ClaudeProvider implements AIProvider {
 
   @override
   String get name => 'Claude';
+
+  @override
+  String get cacheNamespace => 'Claude|$baseUrl|$model';
 
   @override
   Future<bool> testConnection() async {
@@ -37,7 +39,7 @@ class ClaudeProvider implements AIProvider {
           'model': model,
           'max_tokens': 10,
           'messages': [
-            {'role': 'user', 'content': 'Hi'}
+            {'role': 'user', 'content': 'Hi'},
           ],
         },
       );
@@ -68,9 +70,9 @@ class ClaudeProvider implements AIProvider {
           'model': model,
           'max_tokens': 4096,
           'stream': true,
-          'system': Prompts.translateSystem(from: from, to: to),
+          'system': '你是翻译助手。只返回翻译结果，不要解释。',
           'messages': [
-            {'role': 'user', 'content': Prompts.translateUser(text)},
+            {'role': 'user', 'content': '翻译到$to：$text'},
           ],
         },
       );
@@ -107,8 +109,20 @@ class ClaudeProvider implements AIProvider {
 
   @override
   Stream<List<Example>> getExamples(String word) async* {
+    final prompt =
+        '''
+为单词/短语 "$word" 提供3个不同场景的例句。
+请严格按照以下JSON格式返回：
+[
+  {"scene": "日常对话", "original": "英文例句", "translation": "中文翻译"},
+  {"scene": "商务场景", "original": "英文例句", "translation": "中文翻译"},
+  {"scene": "学术写作", "original": "英文例句", "translation": "中文翻译"}
+]
+只返回JSON，不要其他内容。
+''';
+
     yield* _streamJsonList<Example>(
-      Prompts.examples(word),
+      prompt,
       (json) => Example(
         scene: json['scene'] ?? '',
         original: json['original'] ?? '',
@@ -119,8 +133,20 @@ class ClaudeProvider implements AIProvider {
 
   @override
   Stream<List<MovieQuote>> getMovieQuotes(String word) async* {
+    final prompt =
+        '''
+提供包含 "$word" 的3句经典电影台词。
+请严格按照以下JSON格式返回：
+[
+  {"movie": "电影名", "quote": "台词原文", "translation": "中文翻译"},
+  {"movie": "电影名", "quote": "台词原文", "translation": "中文翻译"},
+  {"movie": "电影名", "quote": "台词原文", "translation": "中文翻译"}
+]
+只返回JSON，不要其他内容。
+''';
+
     yield* _streamJsonList<MovieQuote>(
-      Prompts.movieQuotes(word),
+      prompt,
       (json) => MovieQuote(
         movie: json['movie'] ?? '',
         quote: json['quote'] ?? '',
@@ -131,8 +157,20 @@ class ClaudeProvider implements AIProvider {
 
   @override
   Stream<List<ExamItem>> getExamItems(String word) async* {
+    final prompt =
+        '''
+提供包含 "$word" 的3道英语考试真题（如高考、四六级、托福、雅思）。
+请严格按照以下JSON格式返回：
+[
+  {"source": "考试来源", "question": "题目", "answer": "答案解析"},
+  {"source": "考试来源", "question": "题目", "answer": "答案解析"},
+  {"source": "考试来源", "question": "题目", "answer": "答案解析"}
+]
+只返回JSON，不要其他内容。
+''';
+
     yield* _streamJsonList<ExamItem>(
-      Prompts.examItems(word),
+      prompt,
       (json) => ExamItem(
         source: json['source'] ?? '',
         question: json['question'] ?? '',

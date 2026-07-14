@@ -1,48 +1,29 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'input_field.dart';
-import 'result_tabs.dart';
+import '../../../shared/theme/app_tokens.dart';
+import 'command_bar.dart';
+import 'result_document.dart';
 
-/// 翻译主页面
-class TranslatePage extends ConsumerWidget {
+/// 翻译主页面：命令条 + 滚动结果文档。
+///
+/// 结果区直接是滚动文档，不再外层套填充容器。
+class TranslatePage extends StatelessWidget {
   const TranslatePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 输入框
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: const TranslateInputField(),
-            ),
-            Divider(
-              color: theme.colorScheme.outline.withValues(alpha: 0.2),
-              height: 0.5,
-            ),
-
-            // 结果区域 (4个Tab: 翻译、例句、台词、真题)
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const ClipRRect(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  child: ResultTabs(),
-                ),
-              ),
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        0,
+      ),
+      child: Column(
+        children: [
+          CommandBar(),
+          SizedBox(height: AppSpacing.md),
+          Expanded(child: ResultDocument()),
+        ],
       ),
     );
   }

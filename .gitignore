@@ -16,6 +16,7 @@ Desktop.ini
 .svn/
 .swiftpm/
 migrate_working_dir/
+.zcode/
 
 # Local environment and secret files
 .env

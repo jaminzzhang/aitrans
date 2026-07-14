@@ -68,9 +68,5 @@ void main() async {
     }
   }
 
-  runApp(
-    const ProviderScope(
-      child: AITransApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: AITransApp()));
 }

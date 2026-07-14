@@ -1,32 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ai/provider_factory.dart';
-import '../../../core/cache/translation_cache.dart';
 import '../../../core/config/ai_config.dart';
+import '../../../shared/theme/app_tokens.dart';
 import '../../translate/logic/translate_controller.dart';
 
-/// 设置页面
-class SettingsPage extends ConsumerStatefulWidget {
-  const SettingsPage({super.key});
+/// 设置浮层（作为 Dialog 呈现）。
+///
+/// 从齿轮锚点浮入，带 scrim 变暗；Esc 原路关闭。
+/// provider 列表数据驱动：遍历 ProviderType.values，显示名与默认值取自工厂，
+/// 不再手写易漂移的重复默认值表。
+class SettingsSheet extends ConsumerStatefulWidget {
+  const SettingsSheet({super.key});
 
   @override
-  ConsumerState<SettingsPage> createState() => _SettingsPageState();
+  ConsumerState<SettingsSheet> createState() => _SettingsSheetState();
 }
 
-class _SettingsPageState extends ConsumerState<SettingsPage> {
+class _SettingsSheetState extends ConsumerState<SettingsSheet> {
   final _apiKeyController = TextEditingController();
   final _baseUrlController = TextEditingController();
   final _modelController = TextEditingController();
   bool _isTestingConnection = false;
   String? _connectionStatus;
+  bool _connectionOk = false;
 
   @override
   void initState() {
     super.initState();
-    _loadConfig();
-  }
-
-  void _loadConfig() {
     final config = ref.read(aiConfigProvider);
     _apiKeyController.text = config.apiKey ?? '';
     _baseUrlController.text = config.baseUrl ?? '';
@@ -41,320 +42,499 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     super.dispose();
   }
 
+  /// 从工厂解析默认值作为 hint（单一来源，避免与工厂漂移）。
+  String _defaultHint(
+    ProviderType type,
+    String Function(AIEndpointConfig) pick,
+  ) {
+    try {
+      return pick(ProviderFactory.resolveConfig(AIConfig(providerType: type)));
+    } catch (_) {
+      return '';
+    }
+  }
+
   Future<void> _testConnection() async {
     setState(() {
       _isTestingConnection = true;
       _connectionStatus = null;
     });
-
     try {
+      _persistToMemory();
       final provider = ref.read(aiProviderProvider);
-      final success = await provider.testConnection();
+      final ok = await provider.testConnection();
       setState(() {
-        _connectionStatus = success ? '连接成功' : '连接失败';
+        _connectionOk = ok;
+        _connectionStatus = ok ? '连接成功' : '连接失败';
       });
-    } catch (e) {
+    } catch (_) {
       setState(() {
-        _connectionStatus = '连接失败: $e';
+        _connectionOk = false;
+        // 不向用户暴露原始异常/路径，给出友好提示。
+        _connectionStatus = '连接失败，请检查配置';
       });
     } finally {
-      setState(() {
-        _isTestingConnection = false;
-      });
+      setState(() => _isTestingConnection = false);
     }
   }
 
-  void _saveConfig() {
-    final currentConfig = ref.read(aiConfigProvider);
-    ref.read(aiConfigProvider.notifier).state = currentConfig.copyWith(
+  void _persistToMemory() {
+    final current = ref.read(aiConfigProvider);
+    ref.read(aiConfigProvider.notifier).state = current.copyWith(
       apiKey: _apiKeyController.text,
-      baseUrl:
-          _baseUrlController.text.isEmpty ? null : _baseUrlController.text,
+      baseUrl: _baseUrlController.text.isEmpty ? null : _baseUrlController.text,
       model: _modelController.text.isEmpty ? null : _modelController.text,
     );
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('设置已保存'),
-        duration: Duration(seconds: 2),
-      ),
+  void _selectProvider(ProviderType type) {
+    final current = ref.read(aiConfigProvider);
+    ref.read(aiConfigProvider.notifier).state = current.copyWith(
+      providerType: type,
     );
+    // 切换 provider 时清空自定义 endpoint/model，让默认值重新生效。
+    _baseUrlController.clear();
+    _modelController.clear();
+    setState(() => _connectionStatus = null);
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final palette = AppColors.of(Theme.of(context).brightness);
+    final base = Theme.of(context).textTheme;
     final config = ref.watch(aiConfigProvider);
 
-    return Scaffold(
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // AI 服务选择
-          _SectionTitle(title: 'AI 服务'),
-          const SizedBox(height: 8),
-          _buildProviderSelector(config, theme),
-          const SizedBox(height: 24),
-
-          // API 配置
-          _SectionTitle(title: 'API 配置'),
-          const SizedBox(height: 8),
-          _buildTextField(
-            controller: _apiKeyController,
-            label: 'API Key',
-            hint: '输入你的 API Key',
-            obscureText: true,
-          ),
-          const SizedBox(height: 12),
-          _buildTextField(
-            controller: _baseUrlController,
-            label: 'Base URL (可选)',
-            hint: _getDefaultBaseUrl(config.providerType),
-          ),
-          const SizedBox(height: 12),
-          _buildTextField(
-            controller: _modelController,
-            label: '模型 (可选)',
-            hint: _getDefaultModel(config.providerType),
-          ),
-          const SizedBox(height: 24),
-
-          // 操作按钮
-          Row(
+    return Center(
+      child: Container(
+        width: 440,
+        constraints: const BoxConstraints(maxHeight: 640),
+        decoration: BoxDecoration(
+          color: palette.surface,
+          borderRadius: BorderRadius.circular(AppRadii.lg),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadii.lg),
+          child: ListView(
+            padding: EdgeInsets.zero,
             children: [
-              ElevatedButton.icon(
-                onPressed: _saveConfig,
-                icon: const Icon(Icons.save),
-                label: const Text('保存'),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: _isTestingConnection ? null : _testConnection,
-                icon: _isTestingConnection
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.network_check),
-                label: const Text('测试连接'),
+              _Header(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SectionLabel(text: 'AI 服务'),
+                    const SizedBox(height: AppSpacing.sm),
+                    _ProviderList(
+                      selected: config.providerType,
+                      onSelect: _selectProvider,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+
+                    _SectionLabel(text: 'API 配置'),
+                    const SizedBox(height: AppSpacing.sm),
+                    _Field(
+                      controller: _apiKeyController,
+                      label: 'API Key',
+                      hint: '输入你的 API Key',
+                      obscure: true,
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    _Field(
+                      controller: _baseUrlController,
+                      label: 'Base URL（可选）',
+                      hint: _defaultHint(config.providerType, (c) => c.baseUrl),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    _Field(
+                      controller: _modelController,
+                      label: '模型（可选）',
+                      hint: _defaultHint(config.providerType, (c) => c.model),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _SecondaryButton(
+                            label: '测试连接',
+                            loading: _isTestingConnection,
+                            onTap: _isTestingConnection
+                                ? null
+                                : _testConnection,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: _PrimaryButton(
+                            label: '保存',
+                            onTap: () {
+                              _persistToMemory();
+                              Navigator.of(context).maybePop();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_connectionStatus != null) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        _connectionStatus!,
+                        style: AppTypography.caption(base.labelSmall!).copyWith(
+                          color: _connectionOk
+                              ? palette.success
+                              : palette.error,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: AppSpacing.xl),
+
+                    _SectionLabel(text: '快捷键'),
+                    const SizedBox(height: AppSpacing.sm),
+                    const _ShortcutRow(
+                      shortcut: '⌘⇧T',
+                      description: '唤起 / 隐藏窗口',
+                    ),
+                    const _ShortcutRow(shortcut: '↩', description: '立即翻译'),
+                    const _ShortcutRow(shortcut: '⌘K', description: '清空输入'),
+                    const SizedBox(height: AppSpacing.lg),
+                    Text(
+                      'AITrans v1.0.0',
+                      style: AppTypography.caption(
+                        base.labelSmall!,
+                      ).copyWith(color: palette.inkTertiary),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-
-          // 连接状态
-          if (_connectionStatus != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _connectionStatus!,
-              style: TextStyle(
-                color: _connectionStatus!.contains('成功')
-                    ? Colors.green
-                    : theme.colorScheme.error,
-              ),
-            ),
-          ],
-          const SizedBox(height: 32),
-
-          // 缓存管理
-          _SectionTitle(title: '缓存管理'),
-          const SizedBox(height: 8),
-          _buildCacheSection(),
-          const SizedBox(height: 32),
-
-          // 快捷键说明
-          _SectionTitle(title: '快捷键'),
-          const SizedBox(height: 8),
-          _buildShortcutItem('Cmd + Shift + T', '唤起/隐藏窗口'),
-          _buildShortcutItem('Enter', '立即翻译'),
-          _buildShortcutItem('Cmd + K', '清空输入'),
-          const SizedBox(height: 32),
-
-          // 关于
-          _SectionTitle(title: '关于'),
-          const SizedBox(height: 8),
-          Text(
-            'AITrans v1.0.0',
-            style: theme.textTheme.bodyMedium,
-          ),
-          Text(
-            '一个精巧好用的 AI 翻译应用',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-            ),
-          ),
-        ],
+        ),
       ),
     );
-  }
-
-  Widget _buildProviderSelector(AIConfig config, ThemeData theme) {
-    return SegmentedButton<ProviderType>(
-      segments: const [
-        ButtonSegment(
-          value: ProviderType.openai,
-          label: Text('OpenAI'),
-        ),
-        ButtonSegment(
-          value: ProviderType.claude,
-          label: Text('Claude'),
-        ),
-        ButtonSegment(
-          value: ProviderType.deepseek,
-          label: Text('DeepSeek'),
-        ),
-        ButtonSegment(
-          value: ProviderType.ollama,
-          label: Text('Ollama'),
-        ),
-        ButtonSegment(
-          value: ProviderType.custom,
-          label: Text('自定义'),
-        ),
-      ],
-      selected: {config.providerType},
-      onSelectionChanged: (selected) {
-        ref.read(aiConfigProvider.notifier).state = config.copyWith(
-          providerType: selected.first,
-        );
-        // 更新默认值
-        _baseUrlController.text = '';
-        _modelController.text = '';
-      },
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    String? hint,
-    bool obscureText = false,
-  }) {
-    return TextField(
-      controller: controller,
-      obscureText: obscureText,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        border: const OutlineInputBorder(),
-      ),
-    );
-  }
-
-  Widget _buildShortcutItem(String shortcut, String description) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              shortcut,
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontFamily: 'monospace',
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(description),
-        ],
-      ),
-    );
-  }
-
-  String _getDefaultBaseUrl(ProviderType type) {
-    return switch (type) {
-      ProviderType.openai => 'https://api.openai.com/v1',
-      ProviderType.claude => 'https://api.anthropic.com/v1',
-      ProviderType.deepseek => 'https://api.deepseek.com/v1',
-      ProviderType.ollama => 'http://127.0.0.1:11434',
-      ProviderType.custom => '输入自定义 API 地址',
-    };
-  }
-
-  String _getDefaultModel(ProviderType type) {
-    return switch (type) {
-      ProviderType.openai => 'gpt-4o-mini',
-      ProviderType.claude => 'claude-3-haiku-20240307',
-      ProviderType.deepseek => 'deepseek-chat',
-      ProviderType.ollama => 'llama3.2',
-      ProviderType.custom => '输入模型名称',
-    };
-  }
-
-  Widget _buildCacheSection() {
-    final cache = ref.watch(translationCacheProvider);
-    final cacheCount = cache?.count ?? 0;
-    final theme = Theme.of(context);
-
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            '已缓存 $cacheCount 条翻译结果',
-            style: theme.textTheme.bodyMedium,
-          ),
-        ),
-        OutlinedButton.icon(
-          onPressed: cacheCount > 0 ? () => _clearCache(cache!) : null,
-          icon: const Icon(Icons.delete_outline),
-          label: const Text('清空缓存'),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _clearCache(TranslationCache cache) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('确认清空'),
-        content: const Text('确定要清空所有翻译缓存吗？此操作不可恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await cache.clear();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('缓存已清空'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-        setState(() {}); // 刷新UI
-      }
-    }
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  final String title;
+class _Header extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(Theme.of(context).brightness);
+    final base = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          Text(
+            '设置',
+            style: AppTypography.hero(
+              base.titleLarge!,
+            ).copyWith(fontSize: 20, color: palette.inkPrimary),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: Icon(Icons.close, size: 18, color: palette.inkTertiary),
+            onPressed: () => Navigator.of(context).maybePop(),
+            splashColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-  const _SectionTitle({required this.title});
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel({required this.text});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final palette = AppColors.of(Theme.of(context).brightness);
+    final base = Theme.of(context).textTheme;
     return Text(
-      title,
-      style: theme.textTheme.titleMedium?.copyWith(
-        fontWeight: FontWeight.bold,
+      text,
+      style: AppTypography.sectionHeader(
+        base.titleMedium!,
+      ).copyWith(color: palette.inkSecondary),
+    );
+  }
+}
+
+class _ProviderList extends StatelessWidget {
+  final ProviderType selected;
+  final ValueChanged<ProviderType> onSelect;
+  const _ProviderList({required this.selected, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (final type in ProviderType.values)
+          _ProviderRow(
+            type: type,
+            selected: type == selected,
+            onTap: () => onSelect(type),
+          ),
+      ],
+    );
+  }
+}
+
+class _ProviderRow extends StatelessWidget {
+  final ProviderType type;
+  final bool selected;
+  final VoidCallback onTap;
+  const _ProviderRow({
+    required this.type,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(Theme.of(context).brightness);
+    final base = Theme.of(context).textTheme;
+    final name = ProviderFactory.providerName(type);
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(AppRadii.sm),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.sm + 2,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                selected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                size: 18,
+                color: selected ? palette.accent : palette.inkTertiary,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                name,
+                style: AppTypography.body(base.bodyLarge!).copyWith(
+                  color: selected ? palette.inkPrimary : palette.inkSecondary,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Field extends StatefulWidget {
+  final TextEditingController controller;
+  final String label;
+  final String? hint;
+  final bool obscure;
+  const _Field({
+    required this.controller,
+    required this.label,
+    this.hint,
+    this.obscure = false,
+  });
+
+  @override
+  State<_Field> createState() => _FieldState();
+}
+
+class _FieldState extends State<_Field> {
+  bool _show = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(Theme.of(context).brightness);
+    final base = Theme.of(context).textTheme;
+    final obscure = widget.obscure && !_show;
+    return Material(
+      color: palette.surfaceElevated.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(AppRadii.sm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm + 2,
+          vertical: AppSpacing.xs + 2,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.label,
+                    style: AppTypography.caption(
+                      base.labelSmall!,
+                    ).copyWith(color: palette.inkTertiary),
+                  ),
+                  TextField(
+                    controller: widget.controller,
+                    obscureText: obscure,
+                    style: AppTypography.bodyMuted(
+                      base.bodyMedium!,
+                    ).copyWith(color: palette.inkPrimary),
+                    decoration: InputDecoration(
+                      hintText: widget.hint,
+                      isCollapsed: true,
+                      contentPadding: const EdgeInsets.only(top: 4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (widget.obscure)
+              IconButton(
+                icon: Icon(
+                  _show
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  size: 16,
+                  color: palette.inkTertiary,
+                ),
+                onPressed: () => setState(() => _show = !_show),
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(4),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PrimaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _PrimaryButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(Theme.of(context).brightness);
+    final base = Theme.of(context).textTheme;
+    return Material(
+      color: palette.accent,
+      borderRadius: BorderRadius.circular(AppRadii.sm),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: AppTypography.caption(base.labelMedium!).copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SecondaryButton extends StatelessWidget {
+  final String label;
+  final bool loading;
+  final VoidCallback? onTap;
+  const _SecondaryButton({
+    required this.label,
+    required this.loading,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(Theme.of(context).brightness);
+    final base = Theme.of(context).textTheme;
+    return Material(
+      color: palette.surfaceElevated,
+      borderRadius: BorderRadius.circular(AppRadii.sm),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          alignment: Alignment.center,
+          child: loading
+              ? SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: palette.inkSecondary,
+                  ),
+                )
+              : Text(
+                  label,
+                  style: AppTypography.caption(base.labelMedium!).copyWith(
+                    color: palette.inkPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShortcutRow extends StatelessWidget {
+  final String shortcut;
+  final String description;
+  const _ShortcutRow({required this.shortcut, required this.description});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(Theme.of(context).brightness);
+    final base = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: palette.surfaceElevated,
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+            ),
+            child: Text(
+              shortcut,
+              style: AppTypography.caption(
+                base.labelSmall!,
+              ).copyWith(fontFamily: 'monospace', color: palette.inkSecondary),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            description,
+            style: AppTypography.bodyMuted(
+              base.bodyMedium!,
+            ).copyWith(color: palette.inkSecondary),
+          ),
+        ],
       ),
     );
   }

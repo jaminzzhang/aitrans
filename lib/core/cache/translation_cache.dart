@@ -1,4 +1,37 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:hive/hive.dart';
+
+class TranslationCacheIdentity {
+  final String providerNamespace;
+  final String text;
+  final String from;
+  final String to;
+  final Map<String, Object?> options;
+
+  const TranslationCacheIdentity({
+    required this.providerNamespace,
+    required this.text,
+    required this.from,
+    required this.to,
+    this.options = const {},
+  });
+
+  String get key {
+    final sortedOptions = Map<String, Object?>.fromEntries(
+      options.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
+    );
+    final canonical = jsonEncode({
+      'provider': providerNamespace,
+      'text': text,
+      'from': from,
+      'to': to,
+      'options': sortedOptions,
+    });
+    return sha256.convert(utf8.encode(canonical)).toString();
+  }
+}
 
 /// 缓存的翻译结果
 @HiveType(typeId: 2)
@@ -9,14 +42,17 @@ class CachedTranslation extends HiveObject {
   @HiveField(1)
   DateTime lastAccessed;
 
-  CachedTranslation({
-    required this.result,
-    required this.lastAccessed,
-  });
+  CachedTranslation({required this.result, required this.lastAccessed});
 }
 
 /// 翻译缓存 (LRU策略)
-class TranslationCache {
+abstract interface class TranslationCacheStore {
+  Future<String?> get(String key);
+
+  Future<void> set(String key, String value);
+}
+
+class TranslationCache implements TranslationCacheStore {
   final Box<CachedTranslation> _box;
   static const int maxCacheSize = 100;
 
@@ -26,9 +62,9 @@ class TranslationCache {
   int get count => _box.length;
 
   /// 获取缓存
+  @override
   Future<String?> get(String key) async {
-    final hash = _hashKey(key);
-    final cached = _box.get(hash);
+    final cached = _box.get(key);
 
     if (cached != null) {
       // 更新访问时间 (LRU)
@@ -40,30 +76,22 @@ class TranslationCache {
   }
 
   /// 设置缓存
+  @override
   Future<void> set(String key, String value) async {
     // 超过限制时清理最旧的
     if (_box.length >= maxCacheSize) {
       await _evictOldest();
     }
 
-    final hash = _hashKey(key);
     await _box.put(
-      hash,
-      CachedTranslation(
-        result: value,
-        lastAccessed: DateTime.now(),
-      ),
+      key,
+      CachedTranslation(result: value, lastAccessed: DateTime.now()),
     );
   }
 
   /// 清空缓存
   Future<void> clear() async {
     await _box.clear();
-  }
-
-  /// 生成缓存键的哈希
-  String _hashKey(String key) {
-    return key.hashCode.toString();
   }
 
   /// 清理最旧的缓存条目

@@ -15,10 +15,11 @@
 
 ## 2. Feature index
 
-[KNOWN] No owner-confirmed `feature-id` or feature lifecycle document exists yet.
+[KNOWN] The `ai-sdk-integration` feature scope is user-confirmed and has reached `LOCAL_VERIFIED` status; named business, development, and test owners remain unassigned.
 
 | feature-id | Feature | Status | Modules | Summary | Path | Highest risk | Updated |
 |---|---|---|---|---|---|---|---|
+| `ai-sdk-integration` | [KNOWN] AI SDK 统一接入与 tool-call 协议 | [KNOWN] `LOCAL_VERIFIED` | `lib/core/ai/`, config, controller, cache, settings, tests | [KNOWN] 采用 `openai_dart` 适配 OpenAI、DeepSeek、Qwen 和 macOS Ollama；支持标准文本、流式及 function tools 协议，不自动执行工具；静态分析、29 项本地测试和 macOS 调试构建已通过 | `docs/features/ai-sdk-integration/` | P1 | [KNOWN] 2026-07-14 |
 
 ## 3. Module structure
 
@@ -48,6 +49,7 @@
 | Object | Direction | Purpose | Failure behavior | Open issue |
 |---|---|---|---|---|
 | [KNOWN] AI provider implementations | Outbound | [KNOWN] Produce translation-related responses | [KNOWN] Requires source verification in focused tasks | [KNOWN] Timeout, retry, schema, privacy, and cost rules are待确认 |
+| [KNOWN] OpenAI-compatible SDK adapter | Outbound | [KNOWN] 统一 OpenAI、DeepSeek、Qwen 与 macOS Ollama 的文本、流式和 function-tool 协议 | [KNOWN] 结构化错误、网络取消和 capability 校验由 feature 契约约束 | [KNOWN] 不执行模型请求的工具；执行器必须另立 Scope |
 | [KNOWN] Hive translation cache | Local | [KNOWN] Persist translated results and access timestamps | [KNOWN] Initialization exceptions are caught in `main.dart` | [KNOWN] Encryption, retention, deletion, migration, and recovery are待确认 |
 | [KNOWN] Hive AI-config box | Local | [KNOWN] The box and adapter are initialized, but no configuration write was found | [KNOWN] Initialization exceptions are caught in `main.dart` | [KNOWN] Whether persistence is intended and how credentials would be secured are待确认 |
 | [KNOWN] macOS hotkey/window plugins | Local platform | [KNOWN] Window behavior and global shortcut | [KNOWN] Initialization exceptions are caught in `main.dart` | [KNOWN] Required permissions and conflict UX are待确认 |

@@ -16,6 +16,10 @@
 | [KNOWN] Movie quotation | Movie dialogue shown as supporting material | [KNOWN] Licensing, attribution, and excerpt limits are待确认 | `aitrans-prd.md` |
 | [KNOWN] Exam item | Exam material shown as supporting evidence | [KNOWN] Source, copyright status, jurisdiction, and excerpt limits are待确认 | `aitrans-prd.md` |
 | [KNOWN] AI provider | Local or remote AI integration used to produce translations | [KNOWN] Supported providers and routing policy are implementation/configuration concerns | `aitrans-prd.md`, `lib/core/ai/` |
+| [KNOWN] OpenAI-compatible endpoint | [KNOWN] 接受标准 Chat Completions 请求形状的可配置服务入口 | [KNOWN] 兼容不代表覆盖 OpenAI 全部 API 或厂商专有字段 | `docs/features/ai-sdk-integration/` |
+| [KNOWN] Provider preset | [KNOWN] 某 AI 厂商的默认 base URL、认证规则、模型与 capability 配置 | [KNOWN] 用户自定义 endpoint/model 可覆盖 preset，但不得静默更换计费模型 | `docs/features/ai-sdk-integration/` |
+| [KNOWN] Tool call / function call | [KNOWN] 模型返回的结构化函数调用意图，包含 call ID、函数名和 JSON arguments | [KNOWN] 它不是函数执行；首期应用只交付受控调用事件并接收显式 tool result | `docs/features/ai-sdk-integration/` |
+| [KNOWN] Tool result | [KNOWN] 调用方针对既有 call ID 显式提交给模型的函数结果消息 | [KNOWN] 未知、重复或过期 call ID 必须拒绝 | `docs/features/ai-sdk-integration/` |
 
 ## 3. Business domains
 
@@ -35,3 +39,7 @@
 | TR-002 | [KNOWN] The intended result view includes context examples, movie quotations, and exam items. | Learning context | `aitrans-prd.md` | [KNOWN] Confirmed brief; acceptance details待确认 |
 | TR-003 | [KNOWN] On macOS, the intended flow supports global-shortcut invocation and Enter-to-translate. | Quick invocation | `aitrans-prd.md` | [KNOWN] Confirmed brief; shortcut specification待确认 |
 | TR-004 | [KNOWN] The intended supported platforms are macOS, iOS, and Android. | Platform scope | `aitrans-prd.md` | [KNOWN] Confirmed brief |
+| AI-001 | [KNOWN] OpenAI、DeepSeek、Qwen 与 macOS Ollama 的首期标准调用统一封装在项目 `AIProvider` 边界内。 | Provider integration | `docs/features/ai-sdk-integration/` | [KNOWN] User-confirmed scope |
+| AI-002 | [KNOWN] 首期支持 function-tool 声明、选择、非流式/流式 tool calls、显式 tool result 和多轮闭环。 | Tool-call protocol | `docs/features/ai-sdk-integration/` | [KNOWN] User-confirmed scope |
+| AI-003 | [KNOWN] 首期不内置或自动执行文件、Shell、网络、系统函数；任何工具执行器必须另立 Scope。 | Tool execution boundary | `docs/features/ai-sdk-integration/` | [KNOWN] User-confirmed scope |
+| AI-004 | [KNOWN] 模型生成的工具名和 arguments 不可信；只接受当前请求声明的函数，并在产生调用事件前验证 JSON、Schema 和 call ID。 | Tool-call safety | `docs/features/ai-sdk-integration/` | [KNOWN] User-confirmed scope |

@@ -36,8 +36,11 @@ dependencies:
 
   # Network & API
   dio: ^5.7.0
+  crypto: ^3.0.6
+  openai_dart: ^7.0.1
 
   # Local Storage
+  hive: ^2.2.3
   hive_flutter: ^1.1.0
 
   # macOS Features
@@ -52,6 +55,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  test: ^1.25.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

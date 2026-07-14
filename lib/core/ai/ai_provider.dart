@@ -1,5 +1,25 @@
 import 'dart:async';
 
+import 'ai_chat.dart';
+
+enum AIProviderErrorCode {
+  invalidConfiguration,
+  requestFailed,
+  invalidResponse,
+  cancelled,
+  unsupportedCapability,
+}
+
+class AIProviderException implements Exception {
+  final AIProviderErrorCode code;
+  final String message;
+
+  const AIProviderException({required this.code, required this.message});
+
+  @override
+  String toString() => message;
+}
+
 /// 翻译结果
 class TranslationResult {
   final String text;
@@ -52,8 +72,24 @@ abstract class AIProvider {
   /// Provider 名称
   String get name;
 
+  /// Stable, non-secret identity for cache isolation.
+  String get cacheNamespace => name;
+
   /// 测试连接
   Future<bool> testConnection();
+
+  Stream<AIChatEvent> chat(AIChatRequest request) => Stream.error(
+    const AIProviderException(
+      code: AIProviderErrorCode.unsupportedCapability,
+      message: 'This provider does not support tool calling.',
+    ),
+  );
+
+  /// Abort all in-flight requests owned by this provider instance.
+  Future<void> cancelActiveRequests() async {}
+
+  /// Release provider-owned resources.
+  void close() {}
 
   /// 流式翻译
   Stream<TranslationResult> translate({

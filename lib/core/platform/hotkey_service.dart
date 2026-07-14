@@ -27,9 +27,12 @@ class HotkeyService {
       scope: HotKeyScope.system,
     );
 
-    await hotKeyManager.register(hotkey, keyDownHandler: (hotKey) async {
-      await _toggleWindow();
-    });
+    await hotKeyManager.register(
+      hotkey,
+      keyDownHandler: (hotKey) async {
+        await _toggleWindow();
+      },
+    );
   }
 
   /// 取消注册
