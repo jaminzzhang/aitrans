@@ -4,11 +4,20 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../../core/ai/ai.dart';
 import '../../../core/cache/translation_cache.dart';
 import '../../../core/config/ai_config.dart';
+import '../../../core/config/settings_repository.dart';
 import '../models/translate_state.dart';
 
 /// AI 配置 Provider
-final aiConfigProvider = StateProvider<AIConfig>((ref) {
+final initialAIConfigProvider = Provider<AIConfig>((ref) {
   return AIConfig(providerType: ProviderType.ollama);
+});
+
+final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
+  return const UnavailableSettingsRepository();
+});
+
+final aiConfigProvider = StateProvider<AIConfig>((ref) {
+  return ref.watch(initialAIConfigProvider);
 });
 
 /// AI Provider 实例

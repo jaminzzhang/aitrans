@@ -18,6 +18,9 @@
 | [KNOWN] AI provider | Local or remote AI integration used to produce translations | [KNOWN] Supported providers and routing policy are implementation/configuration concerns | `aitrans-prd.md`, `lib/core/ai/` |
 | [KNOWN] OpenAI-compatible endpoint | [KNOWN] 接受标准 Chat Completions 请求形状的可配置服务入口 | [KNOWN] 兼容不代表覆盖 OpenAI 全部 API 或厂商专有字段 | `docs/features/ai-sdk-integration/` |
 | [KNOWN] Provider preset | [KNOWN] 某 AI 厂商的默认 base URL、认证规则、模型与 capability 配置 | [KNOWN] 用户自定义 endpoint/model 可覆盖 preset，但不得静默更换计费模型 | `docs/features/ai-sdk-integration/` |
+| [KNOWN] Settings preferences | [KNOWN] 当前 Provider、可选 Base URL 和模型等非敏感本地偏好 | [KNOWN] 不包含 API Key；损坏或不可读时回退 Ollama 默认配置 | `docs/features/settings-persistence/` |
+| [KNOWN] Provider credential | [KNOWN] 按稳定 Provider ID 隔离的 API Key | [KNOWN] 只进入系统安全存储，不进入普通 Hive、日志或测试 fixture | `docs/features/settings-persistence/` |
+| [KNOWN] Settings draft | [KNOWN] 设置页中尚未提交的 Provider、凭证和覆盖字段 | [KNOWN] 切换 Provider、编辑和测试连接不改变当前生效配置；保存全部成功后才提交应用状态 | `docs/features/settings-persistence/` |
 | [KNOWN] Tool call / function call | [KNOWN] 模型返回的结构化函数调用意图，包含 call ID、函数名和 JSON arguments | [KNOWN] 它不是函数执行；首期应用只交付受控调用事件并接收显式 tool result | `docs/features/ai-sdk-integration/` |
 | [KNOWN] Tool result | [KNOWN] 调用方针对既有 call ID 显式提交给模型的函数结果消息 | [KNOWN] 未知、重复或过期 call ID 必须拒绝 | `docs/features/ai-sdk-integration/` |
 
@@ -43,3 +46,7 @@
 | AI-002 | [KNOWN] 首期支持 function-tool 声明、选择、非流式/流式 tool calls、显式 tool result 和多轮闭环。 | Tool-call protocol | `docs/features/ai-sdk-integration/` | [KNOWN] User-confirmed scope |
 | AI-003 | [KNOWN] 首期不内置或自动执行文件、Shell、网络、系统函数；任何工具执行器必须另立 Scope。 | Tool execution boundary | `docs/features/ai-sdk-integration/` | [KNOWN] User-confirmed scope |
 | AI-004 | [KNOWN] 模型生成的工具名和 arguments 不可信；只接受当前请求声明的函数，并在产生调用事件前验证 JSON、Schema 和 call ID。 | Tool-call safety | `docs/features/ai-sdk-integration/` | [KNOWN] User-confirmed scope |
+| SET-001 | [KNOWN] Provider、Base URL 和模型可以写入非敏感本地偏好；API Key 不得写入普通 Hive。 | Provider configuration | `docs/features/settings-persistence/` | [KNOWN] User-confirmed scope |
+| SET-002 | [KNOWN] API Key 必须按稳定 Provider ID 隔离；空值表示删除当前 Provider 凭证。 | Provider credential | `docs/features/settings-persistence/` | [KNOWN] User-confirmed scope |
+| SET-003 | [KNOWN] 设置编辑与连接测试只操作 Draft；只有持久化成功后才更新生效配置。 | Settings workflow | `docs/features/settings-persistence/` | [KNOWN] User-confirmed scope |
+| SET-004 | [KNOWN] 空 Base URL 或模型表示显式删除自定义覆盖并恢复 Provider preset。 | Provider configuration | `docs/features/settings-persistence/` | [KNOWN] User-confirmed scope |

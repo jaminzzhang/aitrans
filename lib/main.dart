@@ -1,37 +1,48 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:macos_window_utils/macos_window_utils.dart';
 import 'app.dart';
 import 'core/cache/translation_cache.dart';
 import 'core/config/ai_config.dart';
+import 'core/config/settings_preferences_store.dart';
+import 'core/config/settings_repository.dart';
 import 'core/platform/hotkey_service.dart';
+import 'core/security/flutter_secure_key_value_store.dart';
+import 'core/security/provider_credential_store.dart';
+import 'core/ai/provider_factory.dart';
+import 'features/translate/logic/translate_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  SettingsRepository settingsRepository = const UnavailableSettingsRepository();
+  AIConfig initialConfig = AIConfig(providerType: ProviderType.ollama);
 
   try {
     // 初始化 Hive
     await Hive.initFlutter();
 
     // 注册 Hive 适配器 (检查是否已注册)
-    if (!Hive.isAdapterRegistered(0)) {
-      Hive.registerAdapter(AIConfigAdapter());
-    }
-    if (!Hive.isAdapterRegistered(1)) {
-      Hive.registerAdapter(ProviderTypeAdapter());
-    }
     if (!Hive.isAdapterRegistered(2)) {
       Hive.registerAdapter(CachedTranslationAdapter());
     }
 
     // 打开 Hive boxes
-    await Hive.openBox<AIConfig>('ai_config');
     await Hive.openBox<CachedTranslation>('translation_cache');
-  } catch (e) {
-    debugPrint('Hive initialization error: $e');
+    final preferencesBox = await Hive.openBox<dynamic>('settings_preferences');
+    settingsRepository = PersistentSettingsRepository(
+      HiveSettingsPreferencesStore(preferencesBox),
+      SecureProviderCredentialStore(
+        const FlutterSecureKeyValueStore(FlutterSecureStorage()),
+      ),
+    );
+    initialConfig = await settingsRepository.load();
+  } catch (_) {
+    debugPrint('Local settings initialization failed.');
   }
 
   // macOS 窗口配置
@@ -68,5 +79,13 @@ void main() async {
     }
   }
 
-  runApp(const ProviderScope(child: AITransApp()));
+  runApp(
+    ProviderScope(
+      overrides: [
+        initialAIConfigProvider.overrideWithValue(initialConfig),
+        settingsRepositoryProvider.overrideWithValue(settingsRepository),
+      ],
+      child: const AITransApp(),
+    ),
+  );
 }

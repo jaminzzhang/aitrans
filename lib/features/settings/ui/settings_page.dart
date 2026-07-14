@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/ai/ai_provider.dart';
 import '../../../core/ai/provider_factory.dart';
 import '../../../core/config/ai_config.dart';
 import '../../../shared/theme/app_tokens.dart';
@@ -22,13 +23,16 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
   final _baseUrlController = TextEditingController();
   final _modelController = TextEditingController();
   bool _isTestingConnection = false;
+  bool _isSaving = false;
   String? _connectionStatus;
   bool _connectionOk = false;
+  late ProviderType _selectedProvider;
 
   @override
   void initState() {
     super.initState();
     final config = ref.read(aiConfigProvider);
+    _selectedProvider = config.providerType;
     _apiKeyController.text = config.apiKey ?? '';
     _baseUrlController.text = config.baseUrl ?? '';
     _modelController.text = config.model ?? '';
@@ -59,50 +63,91 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
       _isTestingConnection = true;
       _connectionStatus = null;
     });
+    AIProvider? provider;
     try {
-      _persistToMemory();
-      final provider = ref.read(aiProviderProvider);
+      provider = ProviderFactory.create(_buildDraft());
       final ok = await provider.testConnection();
+      if (!mounted) return;
       setState(() {
         _connectionOk = ok;
         _connectionStatus = ok ? '连接成功' : '连接失败';
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _connectionOk = false;
         // 不向用户暴露原始异常/路径，给出友好提示。
         _connectionStatus = '连接失败，请检查配置';
       });
     } finally {
-      setState(() => _isTestingConnection = false);
+      provider?.close();
+      if (mounted) setState(() => _isTestingConnection = false);
     }
   }
 
-  void _persistToMemory() {
-    final current = ref.read(aiConfigProvider);
-    ref.read(aiConfigProvider.notifier).state = current.copyWith(
+  AIConfig _buildDraft() {
+    final baseUrl = _baseUrlController.text.trim();
+    final model = _modelController.text.trim();
+    return AIConfig(
+      providerType: _selectedProvider,
       apiKey: _apiKeyController.text,
-      baseUrl: _baseUrlController.text.isEmpty ? null : _baseUrlController.text,
-      model: _modelController.text.isEmpty ? null : _modelController.text,
+      baseUrl: baseUrl.isEmpty ? null : baseUrl,
+      model: model.isEmpty ? null : model,
     );
   }
 
-  void _selectProvider(ProviderType type) {
-    final current = ref.read(aiConfigProvider);
-    ref.read(aiConfigProvider.notifier).state = current.copyWith(
-      providerType: type,
-    );
-    // 切换 provider 时清空自定义 endpoint/model，让默认值重新生效。
+  Future<void> _selectProvider(ProviderType type) async {
+    if (type == _selectedProvider) return;
+    setState(() {
+      _selectedProvider = type;
+      _connectionStatus = null;
+    });
     _baseUrlController.clear();
     _modelController.clear();
-    setState(() => _connectionStatus = null);
+    _apiKeyController.clear();
+
+    try {
+      final draft = await ref
+          .read(settingsRepositoryProvider)
+          .loadProviderDraft(type);
+      if (!mounted || _selectedProvider != type) return;
+      _apiKeyController.text = draft.apiKey ?? '';
+    } catch (_) {
+      if (!mounted || _selectedProvider != type) return;
+      setState(() {
+        _connectionOk = false;
+        _connectionStatus = '凭证读取失败，请重试';
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    if (_isSaving) return;
+    final draft = _buildDraft();
+    setState(() {
+      _isSaving = true;
+      _connectionStatus = null;
+    });
+    try {
+      await ref.read(settingsRepositoryProvider).save(draft);
+      if (!mounted) return;
+      ref.read(aiConfigProvider.notifier).state = draft;
+      Navigator.of(context).maybePop();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _connectionOk = false;
+        _connectionStatus = '保存失败，请重试';
+      });
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
-    final config = ref.watch(aiConfigProvider);
 
     return Center(
       child: Container(
@@ -131,7 +176,7 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
                     _SectionLabel(text: 'AI 服务'),
                     const SizedBox(height: AppSpacing.sm),
                     _ProviderDropdown(
-                      selected: config.providerType,
+                      selected: _selectedProvider,
                       onSelect: _selectProvider,
                     ),
                     const SizedBox(height: AppSpacing.lg),
@@ -148,13 +193,13 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
                     _Field(
                       controller: _baseUrlController,
                       label: 'Base URL（可选）',
-                      hint: _defaultHint(config.providerType, (c) => c.baseUrl),
+                      hint: _defaultHint(_selectedProvider, (c) => c.baseUrl),
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     _Field(
                       controller: _modelController,
                       label: '模型（可选）',
-                      hint: _defaultHint(config.providerType, (c) => c.model),
+                      hint: _defaultHint(_selectedProvider, (c) => c.model),
                     ),
                     const SizedBox(height: AppSpacing.md),
 
@@ -172,11 +217,8 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(
                           child: _PrimaryButton(
-                            label: '保存',
-                            onTap: () {
-                              _persistToMemory();
-                              Navigator.of(context).maybePop();
-                            },
+                            label: _isSaving ? '保存中…' : '保存',
+                            onTap: _isSaving ? null : _save,
                           ),
                         ),
                       ],
@@ -403,7 +445,7 @@ class _FieldState extends State<_Field> {
 
 class _PrimaryButton extends StatelessWidget {
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   const _PrimaryButton({required this.label, required this.onTap});
 
   @override
