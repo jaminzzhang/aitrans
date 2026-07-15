@@ -88,7 +88,10 @@ void main() {
     );
 
     await tester.enterText(find.byType(TextField).first, 'hello');
-    await tester.pump();
+    // enterText 走防抖路径（onTextChanged，300ms 定时器）。显式等待防抖周期，
+    // 让这次翻译确定性地落地，再清空计数；否则它会在后续打开语言选择器的
+    // pumpAndSettle 中才触发，污染「切换语言重译」的断言。
+    await tester.pumpAndSettle(const Duration(milliseconds: 350));
     provider.translations.clear();
 
     await tester.tap(find.text('中文'));
