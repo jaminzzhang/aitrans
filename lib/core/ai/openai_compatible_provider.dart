@@ -5,6 +5,7 @@ import 'package:openai_dart/openai_dart.dart';
 
 import 'ai_provider.dart';
 import 'ai_chat.dart';
+import 'prompts.dart';
 
 /// OpenAI Chat Completions compatible provider used by remote and local models.
 class OpenAICompatibleProvider extends AIProvider {
@@ -320,12 +321,11 @@ class OpenAICompatibleProvider extends AIProvider {
     String from = 'auto',
     String to = 'zh',
   }) {
-    final source = from == 'auto' ? '自动识别的语言' : from;
     final request = ChatCompletionCreateRequest(
       model: model,
       messages: [
-        ChatMessage.system('你是翻译助手。只返回翻译结果，不要解释。'),
-        ChatMessage.user('把以下内容从$source翻译到$to：$text'),
+        ChatMessage.system(Prompts.translateSystem(from: from, to: to)),
+        ChatMessage.user(Prompts.translateUser(text)),
       ],
     );
     return _translationStream(request);
@@ -382,10 +382,7 @@ class OpenAICompatibleProvider extends AIProvider {
 
   @override
   Stream<List<Example>> getExamples(String word) async* {
-    final json = await _requestJsonList('''
-为单词/短语 "$word" 提供3个不同场景的例句。
-只返回 JSON 数组，每项包含 scene、original、translation。
-''');
+    final json = await _requestJsonList(Prompts.examples(word));
     yield json
         .map(
           (item) => Example(
@@ -399,10 +396,7 @@ class OpenAICompatibleProvider extends AIProvider {
 
   @override
   Stream<List<MovieQuote>> getMovieQuotes(String word) async* {
-    final json = await _requestJsonList('''
-提供包含 "$word" 的3句电影台词。
-只返回 JSON 数组，每项包含 movie、quote、translation。
-''');
+    final json = await _requestJsonList(Prompts.movieQuotes(word));
     yield json
         .map(
           (item) => MovieQuote(
@@ -416,10 +410,7 @@ class OpenAICompatibleProvider extends AIProvider {
 
   @override
   Stream<List<ExamItem>> getExamItems(String word) async* {
-    final json = await _requestJsonList('''
-提供包含 "$word" 的3道英语考试题。
-只返回 JSON 数组，每项包含 source、question、answer。
-''');
+    final json = await _requestJsonList(Prompts.examItems(word));
     yield json
         .map(
           (item) => ExamItem(

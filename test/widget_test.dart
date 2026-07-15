@@ -27,6 +27,20 @@ class _NullAIProvider extends AIProvider {
   Stream<List<ExamItem>> getExamItems(String word) => const Stream.empty();
 }
 
+class _RecordingAIProvider extends _NullAIProvider {
+  final translations = <({String text, String from, String to})>[];
+
+  @override
+  Stream<TranslationResult> translate({
+    required String text,
+    String from = 'auto',
+    String to = 'zh',
+  }) {
+    translations.add((text: text, from: from, to: to));
+    return Stream.value(TranslationResult(text: '', isComplete: true));
+  }
+}
+
 void main() {
   testWidgets('App launches and renders AppShell with command bar', (
     tester,
@@ -60,6 +74,29 @@ void main() {
 
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('AI 服务'), findsOneWidget);
+  });
+
+  testWidgets('changing target language retranslates existing input', (
+    tester,
+  ) async {
+    final provider = _RecordingAIProvider();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [aiProviderProvider.overrideWith((_) => provider)],
+        child: const AITransApp(),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField).first, 'hello');
+    await tester.pump();
+    provider.translations.clear();
+
+    await tester.tap(find.text('中文'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('English').first);
+    await tester.pump();
+
+    expect(provider.translations, [(text: 'hello', from: 'auto', to: 'en')]);
   });
 
   testWidgets('overlong external selection shows a safe error', (tester) async {

@@ -6,6 +6,7 @@ import 'shared/theme/app_tokens.dart';
 import 'features/translate/ui/translate_page.dart';
 import 'features/settings/ui/settings_page.dart';
 import 'features/translate/logic/external_translation_coordinator.dart';
+import 'features/translate/logic/translate_controller.dart';
 
 /// 应用根组件。
 class AITransApp extends ConsumerWidget {
@@ -81,11 +82,13 @@ class AppShell extends ConsumerWidget {
 /// macOS 窗口为透明标题栏（titleBarStyle.hidden），内容从最顶端开始。
 /// 此栏既是窗口拖拽区，又给左上红绿灯让位、把齿轮固定到右端，
 /// 使齿轮与下方输入条分处两行，永不重叠。
-class _TitleBar extends StatelessWidget {
+class _TitleBar extends ConsumerWidget {
   const _TitleBar();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sourceLanguage = ref.watch(sourceLanguageProvider);
+    final targetLanguage = ref.watch(targetLanguageProvider);
     return SafeArea(
       bottom: false,
       child: SizedBox(
@@ -96,6 +99,42 @@ class _TitleBar extends StatelessWidget {
             Positioned.fill(
               child: DragToMoveArea(child: const SizedBox.expand()),
             ),
+            Positioned(
+              left: 76,
+              top: 0,
+              bottom: 0,
+              child: Row(
+                children: [
+                  _LanguageButton(
+                    language: sourceLanguage,
+                    onPressed: () => _showLanguageSelector(
+                      context,
+                      ref,
+                      isSource: true,
+                      currentLanguage: sourceLanguage,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                    tooltip: '交换语言',
+                    onPressed: sourceLanguage == Languages.auto
+                        ? null
+                        : () => _swapLanguages(ref),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
+                  _LanguageButton(
+                    language: targetLanguage,
+                    onPressed: () => _showLanguageSelector(
+                      context,
+                      ref,
+                      isSource: false,
+                      currentLanguage: targetLanguage,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             // 齿轮固定在右端；左上红绿灯由 macOS 自绘，宽度内隐式让位。
             const Positioned(
               right: 6,
@@ -105,6 +144,104 @@ class _TitleBar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _showLanguageSelector(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool isSource,
+    required Language currentLanguage,
+  }) async {
+    final selected = await showDialog<Language>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(isSource ? '选择源语言' : '选择目标语言'),
+        children: (isSource ? Languages.source : Languages.target)
+            .map(
+              (language) => SimpleDialogOption(
+                onPressed: () => Navigator.of(dialogContext).pop(language),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      child: language == currentLanguage
+                          ? const Icon(Icons.check_rounded, size: 18)
+                          : null,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(language.nativeName),
+                    const SizedBox(width: 8),
+                    Text(
+                      language.name,
+                      style: TextStyle(
+                        color: Theme.of(dialogContext).colorScheme.outline,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+    if (selected == null || selected == currentLanguage) return;
+
+    if (isSource) {
+      ref.read(sourceLanguageProvider.notifier).state = selected;
+    } else {
+      ref.read(targetLanguageProvider.notifier).state = selected;
+    }
+    _retranslateCurrentInput(ref);
+  }
+
+  void _swapLanguages(WidgetRef ref) {
+    final source = ref.read(sourceLanguageProvider);
+    if (source == Languages.auto) return;
+    final target = ref.read(targetLanguageProvider);
+    ref.read(sourceLanguageProvider.notifier).state = target;
+    ref.read(targetLanguageProvider.notifier).state = source;
+    _retranslateCurrentInput(ref);
+  }
+
+  void _retranslateCurrentInput(WidgetRef ref) {
+    final input = ref.read(inputTextProvider);
+    if (input.trim().isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(translateControllerProvider.notifier).translateNow(input);
+    });
+  }
+}
+
+class _LanguageButton extends StatelessWidget {
+  final Language language;
+  final VoidCallback onPressed;
+
+  const _LanguageButton({required this.language, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(Theme.of(context).brightness);
+    return TextButton.icon(
+      onPressed: onPressed,
+      iconAlignment: IconAlignment.end,
+      icon: Icon(
+        Icons.arrow_drop_down_rounded,
+        size: 16,
+        color: palette.inkTertiary,
+      ),
+      label: Text(
+        language.nativeName,
+        style: Theme.of(
+          context,
+        ).textTheme.labelMedium?.copyWith(color: palette.inkSecondary),
+      ),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        minimumSize: const Size(0, 30),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     );
   }

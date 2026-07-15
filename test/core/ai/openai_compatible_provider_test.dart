@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:aitrans/core/ai/ai.dart';
+import 'package:aitrans/core/ai/prompts.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -78,10 +79,13 @@ void main() {
     expect(events.last.isComplete, isTrue);
     expect(requestBody['model'], 'test-model');
     expect(requestBody['stream'], isTrue);
-    expect(
-      requestBody['messages'],
-      contains(containsPair('content', contains('hello'))),
-    );
+    expect(requestBody['messages'], [
+      {
+        'role': 'system',
+        'content': Prompts.translateSystem(from: 'en', to: 'zh'),
+      },
+      {'role': 'user', 'content': Prompts.translateUser('hello')},
+    ]);
   });
 
   test('cancelActiveRequests aborts an in-flight HTTP stream', () async {

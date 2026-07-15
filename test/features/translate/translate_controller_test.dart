@@ -67,6 +67,23 @@ void main() {
       expect((controller.state as TranslateStreaming).text, 'latest');
     },
   );
+
+  test('forwards the selected language pair to the AI provider', () async {
+    final provider = _LanguageRecordingProvider();
+    final controller = TranslateController(
+      provider,
+      null,
+      fromLanguage: 'en',
+      toLanguage: 'ja',
+    );
+    addTearDown(controller.dispose);
+
+    controller.translateNow('hello');
+    await pumpEventQueue();
+
+    expect(provider.lastFrom, 'en');
+    expect(provider.lastTo, 'ja');
+  });
 }
 
 class _FakeProvider extends AIProvider {
@@ -149,4 +166,20 @@ class _ControlledProvider extends AIProvider {
 
   @override
   Stream<List<ExamItem>> getExamItems(String word) => const Stream.empty();
+}
+
+class _LanguageRecordingProvider extends _FakeProvider {
+  String? lastFrom;
+  String? lastTo;
+
+  @override
+  Stream<TranslationResult> translate({
+    required String text,
+    String from = 'auto',
+    String to = 'zh',
+  }) {
+    lastFrom = from;
+    lastTo = to;
+    return super.translate(text: text, from: from, to: to);
+  }
 }

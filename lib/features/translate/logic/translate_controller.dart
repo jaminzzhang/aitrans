@@ -7,6 +7,113 @@ import '../../../core/config/ai_config.dart';
 import '../../../core/config/settings_repository.dart';
 import '../models/translate_state.dart';
 
+class Language {
+  final String code;
+  final String name;
+  final String nativeName;
+
+  const Language({
+    required this.code,
+    required this.name,
+    required this.nativeName,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is Language && code == other.code;
+
+  @override
+  int get hashCode => code.hashCode;
+}
+
+class Languages {
+  Languages._();
+
+  static const auto = Language(
+    code: 'auto',
+    name: 'Auto Detect',
+    nativeName: '自动检测',
+  );
+  static const chinese = Language(
+    code: 'zh',
+    name: 'Chinese',
+    nativeName: '中文',
+  );
+  static const english = Language(
+    code: 'en',
+    name: 'English',
+    nativeName: 'English',
+  );
+  static const japanese = Language(
+    code: 'ja',
+    name: 'Japanese',
+    nativeName: '日本語',
+  );
+  static const korean = Language(code: 'ko', name: 'Korean', nativeName: '한국어');
+  static const french = Language(
+    code: 'fr',
+    name: 'French',
+    nativeName: 'Français',
+  );
+  static const german = Language(
+    code: 'de',
+    name: 'German',
+    nativeName: 'Deutsch',
+  );
+  static const spanish = Language(
+    code: 'es',
+    name: 'Spanish',
+    nativeName: 'Español',
+  );
+  static const russian = Language(
+    code: 'ru',
+    name: 'Russian',
+    nativeName: 'Русский',
+  );
+  static const portuguese = Language(
+    code: 'pt',
+    name: 'Portuguese',
+    nativeName: 'Português',
+  );
+  static const italian = Language(
+    code: 'it',
+    name: 'Italian',
+    nativeName: 'Italiano',
+  );
+
+  static const source = [
+    auto,
+    chinese,
+    english,
+    japanese,
+    korean,
+    french,
+    german,
+    spanish,
+    russian,
+    portuguese,
+    italian,
+  ];
+
+  static const target = [
+    chinese,
+    english,
+    japanese,
+    korean,
+    french,
+    german,
+    spanish,
+    russian,
+    portuguese,
+    italian,
+  ];
+}
+
+final sourceLanguageProvider = StateProvider<Language>((ref) => Languages.auto);
+final targetLanguageProvider = StateProvider<Language>(
+  (ref) => Languages.chinese,
+);
+
 /// AI 配置 Provider
 final initialAIConfigProvider = Provider<AIConfig>((ref) {
   return AIConfig(providerType: ProviderType.ollama);
@@ -92,12 +199,20 @@ final translationCacheProvider = Provider<TranslationCache?>((ref) {
 class TranslateController extends StateNotifier<TranslateState> {
   final AIProvider _aiProvider;
   final TranslationCacheStore? _cache;
+  final String _fromLanguage;
+  final String _toLanguage;
   Timer? _debounceTimer;
   StreamSubscription? _translateSubscription;
   int _requestGeneration = 0;
 
-  TranslateController(this._aiProvider, this._cache)
-    : super(const TranslateEmpty());
+  TranslateController(
+    this._aiProvider,
+    this._cache, {
+    String fromLanguage = 'auto',
+    String toLanguage = 'zh',
+  }) : _fromLanguage = fromLanguage,
+       _toLanguage = toLanguage,
+       super(const TranslateEmpty());
 
   /// 输入变化时调用 (带防抖)
   void onTextChanged(String text) {
@@ -137,8 +252,8 @@ class TranslateController extends StateNotifier<TranslateState> {
     final cacheKey = TranslationCacheIdentity(
       providerNamespace: _aiProvider.cacheNamespace,
       text: text,
-      from: 'auto',
-      to: 'zh',
+      from: _fromLanguage,
+      to: _toLanguage,
     ).key;
     // 先检查缓存
     if (_cache != null) {
@@ -155,7 +270,7 @@ class TranslateController extends StateNotifier<TranslateState> {
     final buffer = StringBuffer();
 
     _translateSubscription = _aiProvider
-        .translate(text: text)
+        .translate(text: text, from: _fromLanguage, to: _toLanguage)
         .listen(
           (result) {
             if (generation != _requestGeneration) return;
@@ -199,7 +314,14 @@ final translateControllerProvider =
     StateNotifierProvider<TranslateController, TranslateState>((ref) {
       final aiProvider = ref.watch(aiProviderProvider);
       final cache = ref.watch(translationCacheProvider);
-      return TranslateController(aiProvider, cache);
+      final sourceLanguage = ref.watch(sourceLanguageProvider);
+      final targetLanguage = ref.watch(targetLanguageProvider);
+      return TranslateController(
+        aiProvider,
+        cache,
+        fromLanguage: sourceLanguage.code,
+        toLanguage: targetLanguage.code,
+      );
     });
 
 /// 辅助内容控制器
