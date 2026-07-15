@@ -14,14 +14,14 @@ class TranslatePage extends StatelessWidget {
     return const Padding(
       padding: EdgeInsets.fromLTRB(
         AppSpacing.lg,
-        AppSpacing.md,
+        0,
         AppSpacing.lg,
         0,
       ),
       child: Column(
         children: [
           CommandBar(),
-          SizedBox(height: AppSpacing.lg),
+          SizedBox(height: AppSpacing.sm),
           Expanded(child: ResultDocument()),
         ],
       ),

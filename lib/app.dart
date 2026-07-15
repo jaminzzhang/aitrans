@@ -28,11 +28,12 @@ class AITransApp extends ConsumerWidget {
 
 /// 单画布外壳。
 ///
-/// 布局自上而下两条独立的行，避免齿轮与输入条在右上角相撞：
-///   1. 顶部标题栏：macOS 拖拽区 + 左侧红绿灯让位 + 右侧齿轮。
+/// 布局自上而下三段，让译文区成为绝对主角：
+///   1. 顶部拖拽区：仅 macOS 窗口拖拽 + 红绿灯让位，无功能控件。
 ///   2. 翻译内容区（输入条 + 结果文档）。
+///   3. 底部悬浮胶囊工具条：语言切换 + 设置，沉到底部、低视觉权重。
 ///
-/// 设置不再是常驻页面，由齿轮弹出的浮层承载。
+/// 语言切换和设置不再是顶部常驻控件，由底部胶囊承载。
 class AppShell extends ConsumerWidget {
   const AppShell({super.key});
 
@@ -71,78 +72,125 @@ class AppShell extends ConsumerWidget {
         children: [
           _TitleBar(),
           Expanded(child: TranslatePage()),
+          _BottomToolBar(),
         ],
       ),
     );
   }
 }
 
-/// 顶部标题栏。
+/// 顶部拖拽区。
 ///
 /// macOS 窗口为透明标题栏（titleBarStyle.hidden），内容从最顶端开始。
-/// 此栏既是窗口拖拽区，又给左上红绿灯让位、把齿轮固定到右端，
-/// 使齿轮与下方输入条分处两行，永不重叠。
-class _TitleBar extends ConsumerWidget {
+/// 此区仅作窗口拖拽 + 左上红绿灯让位，不再承载任何功能控件，
+/// 使译文区可以延伸到最顶端，成为视觉主角。
+class _TitleBar extends StatelessWidget {
   const _TitleBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: SizedBox(
+        height: 16,
+        // 拖拽区占满整栏；红绿灯由 macOS 自绘，宽度内隐式让位。
+        // 收窄到 16：仅保留最小拖拽热区与红绿灯让位。
+        child: DragToMoveArea(child: const SizedBox.expand()),
+      ),
+    );
+  }
+}
+
+/// 底部悬浮胶囊工具条。
+///
+/// 语言切换（源 ↔ 目标 + 交换）与设置齿轮沉到窗口底部，居中悬浮的描边胶囊
+/// 承载，与译文区用留白分离，像浮在纸面上的印章，视觉权重极低。
+class _BottomToolBar extends ConsumerWidget {
+  const _BottomToolBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sourceLanguage = ref.watch(sourceLanguageProvider);
     final targetLanguage = ref.watch(targetLanguageProvider);
+    final palette = AppColors.of(Theme.of(context).brightness);
+
     return SafeArea(
-      bottom: false,
-      child: SizedBox(
-        height: 44,
-        // 拖拽区作为底层背景；齿轮置于其上，确保点击不被拖拽层吞掉。
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: DragToMoveArea(child: const SizedBox.expand()),
-            ),
-            Positioned(
-              left: 76,
-              top: 0,
-              bottom: 0,
-              child: Row(
-                children: [
-                  _LanguageButton(
-                    language: sourceLanguage,
-                    onPressed: () => _showLanguageSelector(
-                      context,
-                      ref,
-                      isSource: true,
-                      currentLanguage: sourceLanguage,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.swap_horiz_rounded, size: 18),
-                    tooltip: '交换语言',
-                    onPressed: sourceLanguage == Languages.auto
-                        ? null
-                        : () => _swapLanguages(ref),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    constraints: const BoxConstraints(),
-                  ),
-                  _LanguageButton(
-                    language: targetLanguage,
-                    onPressed: () => _showLanguageSelector(
-                      context,
-                      ref,
-                      isSource: false,
-                      currentLanguage: targetLanguage,
-                    ),
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.sm,
+          AppSpacing.lg,
+          AppSpacing.md,
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            // 描边胶囊：暖纸半透明底 + 发丝描边 + 极淡投影，浮在纸面感。
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: palette.surface.withValues(alpha: 0.82),
+                borderRadius: AppRadii.pillRadius,
+                border: Border.all(color: palette.divider),
+                boxShadow: [
+                  BoxShadow(
+                    color: palette.inkPrimary.withValues(alpha: 0.06),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm + 2,
+                  vertical: AppSpacing.xs + 1,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _LanguageButton(
+                      language: sourceLanguage,
+                      onPressed: () => _showLanguageSelector(
+                        context,
+                        ref,
+                        isSource: true,
+                        currentLanguage: sourceLanguage,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                      tooltip: '交换语言',
+                      onPressed: sourceLanguage == Languages.auto
+                          ? null
+                          : () => _swapLanguages(ref),
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      constraints: const BoxConstraints(),
+                      color: palette.inkTertiary,
+                    ),
+                    _LanguageButton(
+                      language: targetLanguage,
+                      onPressed: () => _showLanguageSelector(
+                        context,
+                        ref,
+                        isSource: false,
+                        currentLanguage: targetLanguage,
+                      ),
+                    ),
+                    // 发丝竖分隔：语言区与齿轮之间的极淡呼吸。
+                    Container(
+                      width: 0.5,
+                      height: 16,
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                      ),
+                      color: palette.divider,
+                    ),
+                    const _SettingsIconButton(),
+                  ],
+                ),
+              ),
             ),
-            // 齿轮固定在右端；左上红绿灯由 macOS 自绘，宽度内隐式让位。
-            const Positioned(
-              right: 6,
-              top: 0,
-              bottom: 0,
-              child: _SettingsIconButton(),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -242,6 +290,7 @@ class _LanguageButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(Theme.of(context).brightness);
+    final base = Theme.of(context).textTheme;
     return TextButton.icon(
       onPressed: onPressed,
       iconAlignment: IconAlignment.end,
@@ -250,11 +299,12 @@ class _LanguageButton extends StatelessWidget {
         size: 16,
         color: palette.inkTertiary,
       ),
+      // 语言名用衬线，呼应译文区书卷气。
       label: Text(
         language.nativeName,
-        style: Theme.of(
-          context,
-        ).textTheme.labelMedium?.copyWith(color: palette.inkSecondary),
+        style: AppTypography.serifSubtitle(
+          base.labelMedium!,
+        ).copyWith(color: palette.inkSecondary),
       ),
       style: TextButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 6),
