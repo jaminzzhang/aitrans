@@ -101,3 +101,25 @@
 2. [KNOWN] 使用非生产、脱敏凭证分别做四厂商 smoke test。
 3. [KNOWN] 发布前补 iOS/Android 构建证据，并对 DeepSeek/Qwen preset 做时效性复核。
 4. [KNOWN] 本报告不构成审批、合并或发布许可。
+
+## 11. 2026-07-15 翻译提交与扩展请求增量
+
+| 对象 | 证据 |
+|---|---|
+| 提交语义 | [KNOWN] Enter、数字键盘 Enter、软键盘提交和“翻译”按钮都调用 `TranslateController.translateNow`；Shift+Enter 仍可输入换行 |
+| 两阶段顺序 | [KNOWN] 显式提交先完成主译文，仅在 complete 事件或主译文缓存命中后调用扩展加载；防抖输入只更新主译文 |
+| 单次扩展请求 | [KNOWN] `TranslationEnrichment` 在一个 JSON 对象中承载 `examples`、`movieQuotes`和 `examItems`；`AuxiliaryController` 只订阅一个 `enrichTranslation` 流 |
+| OpenAI-compatible 契约 | [COMPUTED] 本地 HTTP 契约测试断言一个扩展请求同时填充三类数据，服务端请求计数为 1 |
+| RED | [COMPUTED] 初始聚焦测试因 `enrichTranslation` 和 `onTranslationCompleted` 不存在而编译失败；Enter 测试缺少键盘提交实现 |
+| GREEN | [COMPUTED] `env NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost flutter test` 最终 89 项全部通过 |
+| 静态与构建 | [COMPUTED] `flutter analyze` 返回 `No issues found`；`flutter build macos --debug` 成功生成 Debug App |
+
+## 12. 2026-07-15 macOS Debug 启动故障取证
+
+| 环节 | 证据 |
+|---|---|
+| 故障复现 | [COMPUTED] 直接执行 bundle 内 `aitrans` 二进制两次会产生两个 PID；第二实例报 `translation_cache.lock` 和 `settings_preferences.lock` 锁冲突 |
+| 最小原因 | [INFERRED] 直接运行二进制绕过 macOS LaunchServices 的 App 实例复用，导致多进程争用 Hive 文件锁 |
+| 修复 | [KNOWN] `scripts/run_macos_debug.sh` 会正常关闭旧实例、等待锁释放、编译、通过 `open` 启动，并检查单进程与启动存活 |
+| 修复验证 | [COMPUTED] 连续两次 `open` 同一 Debug bundle 只保留一个 PID；`zsh scripts/run_macos_debug.sh` 构建成功并报告唯一存活 PID 33648 |
+| 流程沉淀 | [KNOWN] `AGENTS.md` 已记录唯一启动命令、禁止方式、成功判定与 Flutter tester 本机代理绕过命令 |

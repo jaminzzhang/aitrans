@@ -136,4 +136,62 @@ void main() {
     expect(events.map((event) => event.text), isNot(contains('second')));
     await subscription.cancel();
   });
+
+  test('loads all enrichment sections with one AI request', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(server.close);
+    var requestCount = 0;
+
+    server.listen((request) async {
+      requestCount++;
+      await utf8.decoder.bind(request).join();
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType(
+          'text',
+          'event-stream',
+          charset: 'utf-8',
+        )
+        ..write(
+          'data: ${jsonEncode({
+            'choices': [
+              {
+                'index': 0,
+                'delta': {
+                  'content': jsonEncode({
+                    'examples': [
+                      {'scene': '日常', 'original': 'Hello there.', 'translation': '你好。'},
+                    ],
+                    'movieQuotes': [
+                      {'movie': 'Test Movie', 'quote': 'Hello, world.', 'translation': '你好，世界。'},
+                    ],
+                    'examItems': [
+                      {'source': 'Test Exam', 'question': 'Say hello.', 'answer': 'Hello.'},
+                    ],
+                  }),
+                },
+                'finish_reason': null,
+              },
+            ],
+          })}\n\n',
+        )
+        ..write('data: [DONE]\n\n');
+      await request.response.close();
+    });
+
+    final provider = OpenAICompatibleProvider(
+      providerName: 'Test',
+      apiKey: 'test-key',
+      baseUrl: 'http://127.0.0.1:${server.port}/v1',
+      model: 'test-model',
+    );
+    addTearDown(provider.close);
+
+    final enrichment = await provider.enrichTranslation('hello').single;
+
+    expect(requestCount, 1);
+    expect(enrichment.examples.single.scene, '日常');
+    expect(enrichment.movieQuotes.single.movie, 'Test Movie');
+    expect(enrichment.examItems.single.source, 'Test Exam');
+  });
 }

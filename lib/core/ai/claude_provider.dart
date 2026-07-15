@@ -121,6 +121,12 @@ class ClaudeProvider extends AIProvider {
   }
 
   @override
+  Stream<TranslationEnrichment> enrichTranslation(String text) async* {
+    final json = await _streamJsonObject(Prompts.translationEnrichment(text));
+    yield TranslationEnrichment.fromJson(json);
+  }
+
+  @override
   Stream<List<MovieQuote>> getMovieQuotes(String word) async* {
     yield* _streamJsonList<MovieQuote>(
       Prompts.movieQuotes(word),
@@ -204,6 +210,57 @@ class ClaudeProvider extends AIProvider {
       }
     } catch (e) {
       yield [];
+    }
+  }
+
+  Future<Map<String, dynamic>> _streamJsonObject(String prompt) async {
+    final buffer = StringBuffer();
+    try {
+      final response = await _dio.post<ResponseBody>(
+        '$baseUrl/messages',
+        options: Options(
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json',
+          },
+          responseType: ResponseType.stream,
+        ),
+        data: {
+          'model': model,
+          'max_tokens': 4096,
+          'stream': true,
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+        },
+      );
+
+      await for (final chunk in response.data!.stream) {
+        final lines = utf8
+            .decode(chunk)
+            .split('\n')
+            .where((line) => line.isNotEmpty);
+        for (final line in lines) {
+          if (!line.startsWith('data: ')) continue;
+          final event = jsonDecode(line.substring(6));
+          if (event['type'] == 'content_block_delta') {
+            buffer.write(event['delta']?['text'] as String? ?? '');
+          } else if (event['type'] == 'message_stop') {
+            final decoded = jsonDecode(buffer.toString().trim());
+            if (decoded is! Map) {
+              throw const FormatException('Expected a JSON object.');
+            }
+            return decoded.cast<String, dynamic>();
+          }
+        }
+      }
+      throw const FormatException('Incomplete AI response.');
+    } catch (_) {
+      throw const AIProviderException(
+        code: AIProviderErrorCode.invalidResponse,
+        message: 'The AI service returned an invalid response.',
+      );
     }
   }
 }

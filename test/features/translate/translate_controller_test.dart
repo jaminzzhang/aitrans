@@ -85,8 +85,28 @@ void main() {
     expect(provider.lastTo, 'ja');
   });
 
+  test('requests enrichment only after the translation completes', () async {
+    final provider = _CompletableProvider();
+    final enrichedTexts = <String>[];
+    final controller = TranslateController(
+      provider,
+      null,
+      onTranslationCompleted: enrichedTexts.add,
+    );
+    addTearDown(controller.dispose);
+
+    controller.translateNow('hello');
+    provider.emitText('translated');
+    await pumpEventQueue();
+    expect(enrichedTexts, isEmpty);
+
+    provider.complete();
+    await pumpEventQueue();
+    expect(enrichedTexts, ['hello']);
+  });
+
   group('AuxiliaryController', () {
-    test('all auxiliary streams failing still clears isLoading', () async {
+    test('a failed enrichment request still clears isLoading', () async {
       final controller = AuxiliaryController(_AllAuxFailingProvider());
       addTearDown(controller.dispose);
 
@@ -105,43 +125,37 @@ void main() {
       expect(controller.state.examItems, isEmpty);
     });
 
-    test(
-      'a failing auxiliary stream does not block the successful ones',
-      () async {
-        final controller = AuxiliaryController(_MixedAuxProvider());
-        addTearDown(controller.dispose);
+    test('one enrichment response populates all three sections', () async {
+      final provider = _CombinedAuxProvider();
+      final controller = AuxiliaryController(provider);
+      addTearDown(controller.dispose);
 
-        controller.loadContent('hello');
-        await pumpEventQueue();
+      controller.loadContent('hello');
+      await pumpEventQueue();
 
-        expect(controller.state.isLoading, isFalse);
-        // 成功的流数据应保留。
-        expect(controller.state.examples, hasLength(1));
-        // 失败的流数据为空但未阻塞整体。
-        expect(controller.state.movieQuotes, isEmpty);
-        expect(controller.state.examItems, hasLength(1));
-      },
-    );
+      expect(controller.state.isLoading, isFalse);
+      expect(controller.state.examples, hasLength(1));
+      expect(controller.state.movieQuotes, hasLength(1));
+      expect(controller.state.examItems, hasLength(1));
+      expect(provider.requestCount, 1);
+    });
   });
 }
 
-/// 混合 provider：例句与考题成功、台词失败，用于断言部分失败不阻塞。
-class _MixedAuxProvider extends _FakeProvider {
-  @override
-  Stream<List<Example>> getExamples(String word) =>
-      Stream.value([Example(scene: '日常', original: word, translation: '释义')]);
+class _CombinedAuxProvider extends _FakeProvider {
+  int requestCount = 0;
 
   @override
-  Stream<List<MovieQuote>> getMovieQuotes(String word) => Stream.error(
-    const AIProviderException(
-      code: AIProviderErrorCode.invalidResponse,
-      message: 'synthetic',
-    ),
-  );
-
-  @override
-  Stream<List<ExamItem>> getExamItems(String word) =>
-      Stream.value([ExamItem(source: 'CET-6', question: 'Q?', answer: 'A')]);
+  Stream<TranslationEnrichment> enrichTranslation(String text) {
+    requestCount++;
+    return Stream.value(
+      TranslationEnrichment(
+        examples: [Example(scene: '日常', original: text, translation: '释义')],
+        movieQuotes: [MovieQuote(movie: '电影', quote: text, translation: '释义')],
+        examItems: [ExamItem(source: 'CET-6', question: 'Q?', answer: 'A')],
+      ),
+    );
+  }
 }
 
 class _FakeProvider extends AIProvider {
@@ -226,6 +240,23 @@ class _ControlledProvider extends AIProvider {
   Stream<List<ExamItem>> getExamItems(String word) => const Stream.empty();
 }
 
+class _CompletableProvider extends _FakeProvider {
+  final _controller = StreamController<TranslationResult>();
+
+  @override
+  Stream<TranslationResult> translate({
+    required String text,
+    String from = 'auto',
+    String to = 'zh',
+  }) => _controller.stream;
+
+  void emitText(String text) =>
+      _controller.add(TranslationResult(text: text, isComplete: false));
+
+  void complete() =>
+      _controller.add(TranslationResult(text: '', isComplete: true));
+}
+
 class _LanguageRecordingProvider extends _FakeProvider {
   String? lastFrom;
   String? lastTo;
@@ -242,26 +273,9 @@ class _LanguageRecordingProvider extends _FakeProvider {
   }
 }
 
-/// 三个辅助流都发 error 的 provider，用于断言辅助加载失败时 UI 不被冻结。
 class _AllAuxFailingProvider extends _FakeProvider {
   @override
-  Stream<List<Example>> getExamples(String word) => Stream.error(
-    const AIProviderException(
-      code: AIProviderErrorCode.invalidResponse,
-      message: 'synthetic',
-    ),
-  );
-
-  @override
-  Stream<List<MovieQuote>> getMovieQuotes(String word) => Stream.error(
-    const AIProviderException(
-      code: AIProviderErrorCode.invalidResponse,
-      message: 'synthetic',
-    ),
-  );
-
-  @override
-  Stream<List<ExamItem>> getExamItems(String word) => Stream.error(
+  Stream<TranslationEnrichment> enrichTranslation(String text) => Stream.error(
     const AIProviderException(
       code: AIProviderErrorCode.invalidResponse,
       message: 'synthetic',

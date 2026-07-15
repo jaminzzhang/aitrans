@@ -17,6 +17,16 @@
 - [KNOWN] Prefer focused tests for changed behavior, then run the relevant broader checks.
 - [KNOWN] Never hand-edit generated Dart files such as `*.g.dart`; update their source and regenerate them with the project's generator.
 
+## macOS Debug 编译启动流程
+
+- [KNOWN] 在项目根目录只使用 `zsh scripts/run_macos_debug.sh` 完成 macOS Debug App 的关闭旧实例、编译、启动和存活检查。
+- [KNOWN] 该脚本会先向已运行的 `com.aitrans.aitrans` 发送正常退出请求，等待进程释放 Hive 文件锁，再执行 `flutter build macos --debug` 和 `open build/macos/Build/Products/Debug/aitrans.app`。
+- [KNOWN] 启动完成标准是 Debug bundle 只有一个进程，且启动后至少持续存活 2 秒；脚本会自动检查并在失败时返回非零状态。
+- [KNOWN] 禁止直接执行 `build/macos/Build/Products/Debug/aitrans.app/Contents/MacOS/aitrans`；直接执行会绕过 macOS LaunchServices 的实例复用，重复运行时会争用 Hive `.lock` 文件。
+- [KNOWN] 禁止使用 `open -n` 启动 AITrans，也不得在已运行上述 Debug App 时再执行 `flutter run -d macos`。
+- [KNOWN] `open` 命令返回不代表 App 退出；启动结果以脚本的单进程和存活检查为准。
+- [KNOWN] 本机 Flutter tester 如果在加载测试时出现 localhost HTTP 连接中断，使用 `env NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost flutter test`。
+
 ## hicode 使用顺序
 
 1. [KNOWN] 先判断目标项目是否已初始化：入口文件是否有本 hicode section，`docs/rules/`、`docs/DOMAIN_KNOWLEDGE.md`、`docs/PROJ_CONTEXT.md` 是否存在。

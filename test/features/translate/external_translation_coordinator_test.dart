@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('accepted request replaces input and starts translation once', () {
+  test('accepted request replaces input and starts main translation once', () {
     final translateController = _RecordingTranslateController();
     final auxiliaryController = _RecordingAuxiliaryController();
     final container = ProviderContainer(
@@ -27,7 +27,7 @@ void main() {
 
     expect(container.read(inputTextProvider), 'selected text');
     expect(translateController.translatedTexts, ['selected text']);
-    expect(auxiliaryController.loadedTexts, ['selected text']);
+    expect(auxiliaryController.loadedTexts, isEmpty);
     expect(
       container.read(externalTranslationCoordinatorProvider),
       isA<ExternalTranslationAccepted>().having(
@@ -82,7 +82,7 @@ void main() {
 
     expect(container.read(inputTextProvider), 'third');
     expect(translateController.translatedTexts, ['second', 'third']);
-    expect(auxiliaryController.loadedTexts, ['second', 'third']);
+    expect(auxiliaryController.loadedTexts, isEmpty);
   });
 
   test('overlong request is rejected without changing input or calling AI', () {

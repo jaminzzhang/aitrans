@@ -6,6 +6,7 @@ import '../../../core/ai/ai.dart';
 import '../../../core/cache/translation_cache.dart';
 import '../../../core/config/ai_config.dart';
 import '../../../core/config/settings_repository.dart';
+import '../models/translation_presentation.dart';
 import '../models/translate_state.dart';
 
 class Language {
@@ -202,6 +203,7 @@ class TranslateController extends StateNotifier<TranslateState> {
   final TranslationCacheStore? _cache;
   final String _fromLanguage;
   final String _toLanguage;
+  final ValueChanged<String>? _onTranslationCompleted;
   Timer? _debounceTimer;
   StreamSubscription? _translateSubscription;
   int _requestGeneration = 0;
@@ -211,8 +213,10 @@ class TranslateController extends StateNotifier<TranslateState> {
     this._cache, {
     String fromLanguage = 'auto',
     String toLanguage = 'zh',
+    ValueChanged<String>? onTranslationCompleted,
   }) : _fromLanguage = fromLanguage,
        _toLanguage = toLanguage,
+       _onTranslationCompleted = onTranslationCompleted,
        super(const TranslateEmpty());
 
   /// 输入变化时调用 (带防抖)
@@ -229,7 +233,7 @@ class TranslateController extends StateNotifier<TranslateState> {
 
     // 300ms 防抖
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
-      _startTranslation(text, generation);
+      _startTranslation(text, generation, enrichAfterCompletion: false);
     });
   }
 
@@ -245,16 +249,23 @@ class TranslateController extends StateNotifier<TranslateState> {
       return;
     }
 
-    _startTranslation(text, generation);
+    _startTranslation(text, generation, enrichAfterCompletion: true);
   }
 
   /// 开始翻译
-  Future<void> _startTranslation(String text, int generation) async {
+  Future<void> _startTranslation(
+    String text,
+    int generation, {
+    required bool enrichAfterCompletion,
+  }) async {
     final cacheKey = TranslationCacheIdentity(
       providerNamespace: _aiProvider.cacheNamespace,
       text: text,
       from: _fromLanguage,
       to: _toLanguage,
+      options: const {
+        'outputContract': TranslationPresentation.outputContractVersion,
+      },
     ).key;
     // 先检查缓存
     if (_cache != null) {
@@ -262,6 +273,9 @@ class TranslateController extends StateNotifier<TranslateState> {
       if (generation != _requestGeneration) return;
       if (cached != null) {
         state = TranslateComplete(cached);
+        if (enrichAfterCompletion) {
+          _onTranslationCompleted?.call(text);
+        }
         return;
       }
     }
@@ -269,6 +283,7 @@ class TranslateController extends StateNotifier<TranslateState> {
     // 流式翻译
     state = const TranslateLoading();
     final buffer = StringBuffer();
+    var didComplete = false;
 
     _translateSubscription = _aiProvider
         .translate(text: text, from: _fromLanguage, to: _toLanguage)
@@ -276,10 +291,15 @@ class TranslateController extends StateNotifier<TranslateState> {
           (result) {
             if (generation != _requestGeneration) return;
             if (result.isComplete) {
+              if (didComplete) return;
+              didComplete = true;
               final finalText = buffer.toString();
               // 缓存结果
               _cache?.set(cacheKey, finalText);
               state = TranslateComplete(finalText);
+              if (enrichAfterCompletion) {
+                _onTranslationCompleted?.call(text);
+              }
             } else {
               buffer.write(result.text);
               state = TranslateStreaming(buffer.toString());
@@ -322,99 +342,59 @@ final translateControllerProvider =
         cache,
         fromLanguage: sourceLanguage.code,
         toLanguage: targetLanguage.code,
+        onTranslationCompleted: (text) {
+          ref.read(auxiliaryControllerProvider.notifier).loadContent(text);
+        },
       );
     });
 
 /// 辅助内容控制器
 class AuxiliaryController extends StateNotifier<AuxiliaryState> {
   final AIProvider _aiProvider;
-  StreamSubscription? _examplesSubscription;
-  StreamSubscription? _quotesSubscription;
-  StreamSubscription? _examSubscription;
-
-  /// 当前加载周期尚未结束的流计数；归零时表示全部辅助流已收尾。
-  int _pendingCount = 0;
+  StreamSubscription<TranslationEnrichment>? _enrichmentSubscription;
 
   AuxiliaryController(this._aiProvider) : super(const AuxiliaryState());
 
-  /// 加载辅助内容。
-  ///
-  /// 三个辅助流并行加载；任一流出错或完成后递减计数，全部结束后归位
-  /// `isLoading`。错误被吸收并记录（不向用户暴露原始异常），避免未处理异常
-  /// 冒泡冻结 UI，且保证 `isLoading` 不会永久卡在 true。新一轮加载会先
-  /// cancel 旧订阅，旧回调不再触发，故无需额外代际守卫。
+  /// 用一次 AI 请求加载全部扩展内容。
   void loadContent(String word) {
     if (word.trim().isEmpty) {
       state = const AuxiliaryState();
       return;
     }
 
-    _cancelSubscriptions();
-    _pendingCount = 3;
+    _enrichmentSubscription?.cancel();
     state = const AuxiliaryState(isLoading: true);
 
-    // 加载场景例句
-    _examplesSubscription = _aiProvider
-        .getExamples(word)
+    _enrichmentSubscription = _aiProvider
+        .enrichTranslation(word)
         .listen(
-          (examples) => state = state.copyWith(examples: examples),
-          onError: (_) {
-            debugPrint('Auxiliary examples failed.');
-            _onStreamFinished();
+          (enrichment) {
+            state = AuxiliaryState(
+              examples: enrichment.examples,
+              movieQuotes: enrichment.movieQuotes,
+              examItems: enrichment.examItems,
+              isLoading: true,
+            );
           },
-          onDone: _onStreamFinished,
-        );
-
-    // 加载电影台词
-    _quotesSubscription = _aiProvider
-        .getMovieQuotes(word)
-        .listen(
-          (quotes) => state = state.copyWith(movieQuotes: quotes),
           onError: (_) {
-            debugPrint('Auxiliary movie quotes failed.');
-            _onStreamFinished();
+            debugPrint('Translation enrichment failed.');
+            if (mounted) state = state.copyWith(isLoading: false);
           },
-          onDone: _onStreamFinished,
-        );
-
-    // 加载考试真题
-    _examSubscription = _aiProvider
-        .getExamItems(word)
-        .listen(
-          (items) => state = state.copyWith(examItems: items),
-          onError: (_) {
-            debugPrint('Auxiliary exam items failed.');
-            _onStreamFinished();
+          onDone: () {
+            if (mounted) state = state.copyWith(isLoading: false);
           },
-          onDone: _onStreamFinished,
         );
-  }
-
-  /// 单条辅助流结束（成功 done 或失败 error）时调用；全部结束后归位 loading。
-  void _onStreamFinished() {
-    // 新一轮 loadContent 已发起时忽略旧周期的回调。
-    if (_pendingCount == 0) return;
-    _pendingCount--;
-    if (_pendingCount == 0 && mounted) {
-      state = state.copyWith(isLoading: false);
-    }
-  }
-
-  void _cancelSubscriptions() {
-    _examplesSubscription?.cancel();
-    _quotesSubscription?.cancel();
-    _examSubscription?.cancel();
   }
 
   /// 清空
   void clear() {
-    _cancelSubscriptions();
+    _enrichmentSubscription?.cancel();
     state = const AuxiliaryState();
   }
 
   @override
   void dispose() {
-    _cancelSubscriptions();
+    _enrichmentSubscription?.cancel();
     super.dispose();
   }
 }

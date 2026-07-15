@@ -19,11 +19,12 @@ class CommandBar extends ConsumerStatefulWidget {
 
 class _CommandBarState extends ConsumerState<CommandBar> {
   final _controller = TextEditingController();
-  final _focusNode = FocusNode();
+  late final FocusNode _focusNode;
 
   @override
   void initState() {
     super.initState();
+    _focusNode = FocusNode(onKeyEvent: _handleKeyEvent);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focusNode.requestFocus();
     });
@@ -42,8 +43,22 @@ class _CommandBarState extends ConsumerState<CommandBar> {
   }
 
   void _onSubmitted(String value) {
+    ref.read(auxiliaryControllerProvider.notifier).clear();
     ref.read(translateControllerProvider.notifier).translateNow(value);
-    ref.read(auxiliaryControllerProvider.notifier).loadContent(value);
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    final key = event.logicalKey;
+    final isEnter =
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter;
+    if (event is KeyDownEvent &&
+        isEnter &&
+        !HardwareKeyboard.instance.isShiftPressed) {
+      _onSubmitted(_controller.text);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   void _clear() {

@@ -7,19 +7,19 @@ class Prompts {
   /// [to] 目标语言代码
   static String translateSystem({String from = 'auto', String to = 'zh'}) {
     final targetLangName = _languageNames[to] ?? to;
+    final task = from == 'auto'
+        ? '自动识别输入语言，并翻译成$targetLangName'
+        : '将输入的${_languageNames[from] ?? from}文字翻译成$targetLangName';
 
-    if (from == 'auto') {
-      // 自动检测模式
-      return '''
-你是翻译助手，能够自动识别输入的文字语言，将其翻译成$targetLangName。只返回翻译结果，不要解释。
+    return '''
+你是翻译助手。$task。
+
+输出规则：
+- 输入是单个词或短语时，第一行只输出最主要、最常用的词义，不加序号、标签或解释。
+- 第二行起输出 2 至 4 个常见补充词义，每行以「- 」开头；必要时可保留简短词性，但不要重复主词义。
+- 输入是完整句子或段落时，只输出一行自然、完整的译文，不拆分词义。
+- 不要输出标题、前言、Markdown 代码块或规则说明。
 ''';
-    } else {
-      // 指定源语言模式
-      final sourceLangName = _languageNames[from] ?? from;
-      return '''
-你是翻译助手，将输入的$sourceLangName文字翻译成$targetLangName。只返回翻译结果，不要解释。
-''';
-    }
   }
 
   /// 语言代码到名称的映射
@@ -36,78 +36,26 @@ class Prompts {
     'it': '意大利语',
   };
 
-// 2.0 版本结构化提示词
-// '''
-// You are a translation API backend. Analyze the input text provided by the user and return a JSON object strictly adhering to the following logic:  
-  
-// LOGIC:  
-// 1. Detect input language.  
-// 2. IF input is Chinese (ZH): Target language is English (EN).  
-// 3. IF input is NOT Chinese: Target language is Simplified Chinese (ZH-CN).  
-  
-// OUTPUT FORMAT:  
-// Return ONLY a valid JSON object. Do not include markdown formatting like ```json.  
-  
-// JSON STRUCTURE:  
-// {  
-//   "source_lang": "Detected Language Code (e.g., zh, en, jp)",  
-//   "target_lang": "Target Language Code",  
-//   "translation": "Main translation result",  
-//   "phonetic": "IPA string (Only if target is English, otherwise null)",  
-//   "definitions": [  
-//     {  
-//       "part_of_speech": "e.g., Noun, Verb, Adj",  
-//       "meaning": "Detailed definition in the target language logic"  
-//     }  
-//   ]  
-// }  
-// ''';
-
-//3.0 版本复杂提示词
-// '''
-//   # Role  
-//   你是一位精通多国语言的语言学专家和高级翻译引擎。你能够精准识别输入文本的语言，并进行深度解析。  
-    
-//   # Task  
-//   请根据用户输入的文本内容，执行以下逻辑判断和翻译任务：  
-    
-//   ## Logic Workflow  
-//   1. **语言识别 (Language Detection)**: 自动检测用户输入的语言种类。  
-//   2. **逻辑分支 (Branching)**:  
-//       - **情况 A (Input is Chinese)**:  
-//           - 将中文翻译成英文。  
-//           - 必须提供英文的国际音标 (IPA)。  
-//           - 列出该词/句在英文中的详细词性（n., v., adj. 等）及其对应的英文释义和中文含义。  
-//       - **情况 B (Input is Other Languages)**:  
-//           - 将输入语言翻译成简体中文。  
-//           - 列出该词/句的详细词性及其对应的中文释义。  
-//   3. **长句处理**: 如果输入是单个单词或短语，提供详细词性释义；如果输入是长句子或段落，仅提供流畅的翻译结果，不提供词性解析。
-
-//   # Output Format  
-//   请严格按照以下 Markdown 格式输出（不要输出多余的寒暄语）：  
-    
-//   ---  
-//   ### [翻译结果]  
-//   (这里展示核心翻译词汇或句子)  
-    
-//   ### [音标]  
-//   (仅当目标语言为英文时显示此项，否则省略)  
-    
-//   ### [详细释义]  
-//   - **[词性 1]**: [含义详解]  
-//   - **[词性 2]**: [含义详解]  
-//   ...  
-//   ---  
-    
-//   # Constraints  
-//   - 释义必须详尽，涵盖该词在不同语境下的常用意义。  
-//   - 保持客观、学术的语气。  
-//   - 如果输入是长句，重点对句子进行意译，并提取句中核心词汇进行解析。  
-    
-// ''';
-
   /// 翻译用户提示词
   static String translateUser(String text) => '翻译：$text';
+
+  /// 一次请求生成全部扩展内容。
+  static String translationEnrichment(String text) =>
+      '''
+围绕单词、短语或文本 "$text" 一次生成三类学习扩展内容。
+请严格按照以下 JSON 对象格式返回，每个数组各 3 项：
+{
+  "examples": [
+    {"scene": "场景", "original": "原文例句", "translation": "中文翻译"}
+  ],
+  "movieQuotes": [
+    {"movie": "电影名", "quote": "台词原文", "translation": "中文翻译"}
+  ],
+  "examItems": [
+    {"source": "考试来源", "question": "题目", "answer": "答案解析"}
+  ]
+}
+只返回 JSON，不要 Markdown 代码块或其他内容。''';
 
   /// 例句提示词
   static String examples(String word) =>

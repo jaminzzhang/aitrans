@@ -67,6 +67,62 @@ class ExamItem {
   });
 }
 
+/// 主译文完成后一次性加载的扩展内容。
+class TranslationEnrichment {
+  final List<Example> examples;
+  final List<MovieQuote> movieQuotes;
+  final List<ExamItem> examItems;
+
+  const TranslationEnrichment({
+    this.examples = const [],
+    this.movieQuotes = const [],
+    this.examItems = const [],
+  });
+
+  factory TranslationEnrichment.fromJson(Map<String, dynamic> json) {
+    final examples = _jsonObjects(json['examples'])
+        .map(
+          (item) => Example(
+            scene: item['scene'] as String? ?? '',
+            original: item['original'] as String? ?? '',
+            translation: item['translation'] as String? ?? '',
+          ),
+        )
+        .toList();
+    final movieQuotes = _jsonObjects(json['movieQuotes'])
+        .map(
+          (item) => MovieQuote(
+            movie: item['movie'] as String? ?? '',
+            quote: item['quote'] as String? ?? '',
+            translation: item['translation'] as String? ?? '',
+          ),
+        )
+        .toList();
+    final examItems = _jsonObjects(json['examItems'])
+        .map(
+          (item) => ExamItem(
+            source: item['source'] as String? ?? '',
+            question: item['question'] as String? ?? '',
+            answer: item['answer'] as String? ?? '',
+          ),
+        )
+        .toList();
+    return TranslationEnrichment(
+      examples: examples,
+      movieQuotes: movieQuotes,
+      examItems: examItems,
+    );
+  }
+}
+
+List<Map<String, dynamic>> _jsonObjects(Object? value) {
+  if (value is! List) return const [];
+  return value
+      .whereType<Map>()
+      .map((item) => item.cast<String, dynamic>())
+      .toList();
+}
+
 /// AI Provider 抽象接口
 abstract class AIProvider {
   /// Provider 名称
@@ -97,6 +153,14 @@ abstract class AIProvider {
     String from = 'auto',
     String to = 'zh',
   });
+
+  /// 一次请求返回场景例句、电影台词和考试真题。
+  Stream<TranslationEnrichment> enrichTranslation(String text) => Stream.error(
+    const AIProviderException(
+      code: AIProviderErrorCode.unsupportedCapability,
+      message: 'This provider does not support translation enrichment.',
+    ),
+  );
 
   /// 获取场景例句
   Stream<List<Example>> getExamples(String word);

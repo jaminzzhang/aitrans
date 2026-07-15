@@ -7,6 +7,7 @@ import '../../../shared/widgets/copy_button.dart';
 import '../../../shared/widgets/section_header.dart';
 import '../../../shared/widgets/state_view.dart';
 import '../logic/translate_controller.dart';
+import '../models/translation_presentation.dart';
 import '../models/translate_state.dart';
 
 /// 结果文档：英雄译文 sticky + 向下滚动的三个辅助分节。
@@ -195,6 +196,7 @@ class HeroTranslation extends StatelessWidget {
   }) {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
+    final presentation = TranslationPresentation.parse(text);
     // 朱砂细下划线：译文下方的精装书扉页式分隔，宽约 36pt，极细。
     return SpringFadeIn(
       fadeKey: fadeKey,
@@ -203,11 +205,43 @@ class HeroTranslation extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SelectableText(
-            text,
+            presentation.primaryMeaning,
             style: AppTypography.editorial(
               base.displayMedium!,
             ).copyWith(color: palette.inkPrimary),
           ),
+          if (presentation.secondaryMeanings.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.md),
+            for (final meaning in presentation.secondaryMeanings)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: palette.seal,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: SelectableText(
+                        meaning,
+                        style: AppTypography.serifBody(
+                          base.bodyLarge!,
+                        ).copyWith(color: palette.inkSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
           // 朱砂细线：紧贴译文下方，留白后再放操作行。
           if (!isStreaming && text.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),

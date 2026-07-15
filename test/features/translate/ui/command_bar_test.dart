@@ -3,6 +3,7 @@ import 'package:aitrans/features/translate/logic/translate_controller.dart';
 import 'package:aitrans/features/translate/ui/command_bar.dart';
 import 'package:aitrans/shared/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -128,6 +129,37 @@ void main() {
       await tester.pump();
 
       expect(controller.translateNowCalls, greaterThan(0));
+      expect(controller.lastSubmitted, 'translate me');
+    });
+
+    testWidgets('enter triggers the same immediate translation as the chip', (
+      tester,
+    ) async {
+      final controller = _RecordingTranslateController();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            aiProviderProvider.overrideWith((_) => _NullAIProvider()),
+            translateControllerProvider.overrideWith((_) => controller),
+            auxiliaryControllerProvider.overrideWith(
+              (_) => _NoopAuxiliaryController(),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(body: CommandBar()),
+          ),
+        ),
+      );
+
+      await tester.enterText(find.byType(TextField), 'translate me');
+      await tester.pump();
+      final callsBeforeEnter = controller.translateNowCalls;
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+
+      expect(controller.translateNowCalls, callsBeforeEnter + 1);
       expect(controller.lastSubmitted, 'translate me');
     });
 

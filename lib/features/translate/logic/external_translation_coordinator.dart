@@ -95,8 +95,8 @@ final class ExternalTranslationCoordinator
 
     final request = (result as AcceptedExternalTranslationRequest).request;
     ref.read(inputTextProvider.notifier).state = request.text;
+    ref.read(auxiliaryControllerProvider.notifier).clear();
     ref.read(translateControllerProvider.notifier).translateNow(request.text);
-    ref.read(auxiliaryControllerProvider.notifier).loadContent(request.text);
     state = ExternalTranslationAccepted(request.sequence);
   }
 }

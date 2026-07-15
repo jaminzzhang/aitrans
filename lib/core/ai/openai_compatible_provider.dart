@@ -395,6 +395,12 @@ class OpenAICompatibleProvider extends AIProvider {
   }
 
   @override
+  Stream<TranslationEnrichment> enrichTranslation(String text) async* {
+    final json = await _requestJsonObject(Prompts.translationEnrichment(text));
+    yield TranslationEnrichment.fromJson(json);
+  }
+
+  @override
   Stream<List<MovieQuote>> getMovieQuotes(String word) async* {
     final json = await _requestJsonList(Prompts.movieQuotes(word));
     yield json
@@ -446,6 +452,44 @@ class OpenAICompatibleProvider extends AIProvider {
         code: AIProviderErrorCode.invalidResponse,
         message: 'The AI service returned an invalid response.',
       );
+    }
+  }
+
+  Future<Map<String, dynamic>> _requestJsonObject(String prompt) async {
+    final buffer = StringBuffer();
+    final abort = Completer<void>();
+    _activeAborts.add(abort);
+    try {
+      final stream = _client.chat.completions.createStream(
+        ChatCompletionCreateRequest(
+          model: model,
+          messages: [ChatMessage.user(prompt)],
+        ),
+        abortTrigger: abort.future,
+      );
+      await for (final event in stream) {
+        if (abort.isCompleted) break;
+        buffer.write(event.textDelta ?? '');
+      }
+      final decoded = jsonDecode(buffer.toString());
+      if (decoded is! Map) {
+        throw const FormatException('Expected a JSON object.');
+      }
+      return decoded.cast<String, dynamic>();
+    } on AbortedException {
+      throw const AIProviderException(
+        code: AIProviderErrorCode.cancelled,
+        message: 'AI request was cancelled.',
+      );
+    } on AIProviderException {
+      rethrow;
+    } catch (_) {
+      throw const AIProviderException(
+        code: AIProviderErrorCode.invalidResponse,
+        message: 'The AI service returned an invalid response.',
+      );
+    } finally {
+      _activeAborts.remove(abort);
     }
   }
 }
