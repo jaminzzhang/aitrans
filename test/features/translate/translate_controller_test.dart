@@ -84,6 +84,64 @@ void main() {
     expect(provider.lastFrom, 'en');
     expect(provider.lastTo, 'ja');
   });
+
+  group('AuxiliaryController', () {
+    test('all auxiliary streams failing still clears isLoading', () async {
+      final controller = AuxiliaryController(_AllAuxFailingProvider());
+      addTearDown(controller.dispose);
+
+      expect(controller.state.isLoading, isFalse);
+      controller.loadContent('serendipity');
+      // 流未处理前应进入加载态。
+      expect(controller.state.isLoading, isTrue);
+
+      // 让 error 事件落地。未处理异常不应冒泡出测试（否则 expectLater 抛出）。
+      await pumpEventQueue();
+
+      // 关键断言：全部失败后 loading 必须归位，UI 不会被冻结。
+      expect(controller.state.isLoading, isFalse);
+      expect(controller.state.examples, isEmpty);
+      expect(controller.state.movieQuotes, isEmpty);
+      expect(controller.state.examItems, isEmpty);
+    });
+
+    test(
+      'a failing auxiliary stream does not block the successful ones',
+      () async {
+        final controller = AuxiliaryController(_MixedAuxProvider());
+        addTearDown(controller.dispose);
+
+        controller.loadContent('hello');
+        await pumpEventQueue();
+
+        expect(controller.state.isLoading, isFalse);
+        // 成功的流数据应保留。
+        expect(controller.state.examples, hasLength(1));
+        // 失败的流数据为空但未阻塞整体。
+        expect(controller.state.movieQuotes, isEmpty);
+        expect(controller.state.examItems, hasLength(1));
+      },
+    );
+  });
+}
+
+/// 混合 provider：例句与考题成功、台词失败，用于断言部分失败不阻塞。
+class _MixedAuxProvider extends _FakeProvider {
+  @override
+  Stream<List<Example>> getExamples(String word) =>
+      Stream.value([Example(scene: '日常', original: word, translation: '释义')]);
+
+  @override
+  Stream<List<MovieQuote>> getMovieQuotes(String word) => Stream.error(
+    const AIProviderException(
+      code: AIProviderErrorCode.invalidResponse,
+      message: 'synthetic',
+    ),
+  );
+
+  @override
+  Stream<List<ExamItem>> getExamItems(String word) =>
+      Stream.value([ExamItem(source: 'CET-6', question: 'Q?', answer: 'A')]);
 }
 
 class _FakeProvider extends AIProvider {
@@ -182,4 +240,31 @@ class _LanguageRecordingProvider extends _FakeProvider {
     lastTo = to;
     return super.translate(text: text, from: from, to: to);
   }
+}
+
+/// 三个辅助流都发 error 的 provider，用于断言辅助加载失败时 UI 不被冻结。
+class _AllAuxFailingProvider extends _FakeProvider {
+  @override
+  Stream<List<Example>> getExamples(String word) => Stream.error(
+    const AIProviderException(
+      code: AIProviderErrorCode.invalidResponse,
+      message: 'synthetic',
+    ),
+  );
+
+  @override
+  Stream<List<MovieQuote>> getMovieQuotes(String word) => Stream.error(
+    const AIProviderException(
+      code: AIProviderErrorCode.invalidResponse,
+      message: 'synthetic',
+    ),
+  );
+
+  @override
+  Stream<List<ExamItem>> getExamItems(String word) => Stream.error(
+    const AIProviderException(
+      code: AIProviderErrorCode.invalidResponse,
+      message: 'synthetic',
+    ),
+  );
 }

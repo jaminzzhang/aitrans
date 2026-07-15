@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../core/ai/ai.dart';
@@ -331,9 +332,17 @@ class AuxiliaryController extends StateNotifier<AuxiliaryState> {
   StreamSubscription? _quotesSubscription;
   StreamSubscription? _examSubscription;
 
+  /// 当前加载周期尚未结束的流计数；归零时表示全部辅助流已收尾。
+  int _pendingCount = 0;
+
   AuxiliaryController(this._aiProvider) : super(const AuxiliaryState());
 
-  /// 加载辅助内容
+  /// 加载辅助内容。
+  ///
+  /// 三个辅助流并行加载；任一流出错或完成后递减计数，全部结束后归位
+  /// `isLoading`。错误被吸收并记录（不向用户暴露原始异常），避免未处理异常
+  /// 冒泡冻结 UI，且保证 `isLoading` 不会永久卡在 true。新一轮加载会先
+  /// cancel 旧订阅，旧回调不再触发，故无需额外代际守卫。
   void loadContent(String word) {
     if (word.trim().isEmpty) {
       state = const AuxiliaryState();
@@ -341,22 +350,54 @@ class AuxiliaryController extends StateNotifier<AuxiliaryState> {
     }
 
     _cancelSubscriptions();
+    _pendingCount = 3;
     state = const AuxiliaryState(isLoading: true);
 
     // 加载场景例句
-    _examplesSubscription = _aiProvider.getExamples(word).listen((examples) {
-      state = state.copyWith(examples: examples);
-    });
+    _examplesSubscription = _aiProvider
+        .getExamples(word)
+        .listen(
+          (examples) => state = state.copyWith(examples: examples),
+          onError: (_) {
+            debugPrint('Auxiliary examples failed.');
+            _onStreamFinished();
+          },
+          onDone: _onStreamFinished,
+        );
 
     // 加载电影台词
-    _quotesSubscription = _aiProvider.getMovieQuotes(word).listen((quotes) {
-      state = state.copyWith(movieQuotes: quotes);
-    });
+    _quotesSubscription = _aiProvider
+        .getMovieQuotes(word)
+        .listen(
+          (quotes) => state = state.copyWith(movieQuotes: quotes),
+          onError: (_) {
+            debugPrint('Auxiliary movie quotes failed.');
+            _onStreamFinished();
+          },
+          onDone: _onStreamFinished,
+        );
 
     // 加载考试真题
-    _examSubscription = _aiProvider.getExamItems(word).listen((items) {
-      state = state.copyWith(examItems: items, isLoading: false);
-    });
+    _examSubscription = _aiProvider
+        .getExamItems(word)
+        .listen(
+          (items) => state = state.copyWith(examItems: items),
+          onError: (_) {
+            debugPrint('Auxiliary exam items failed.');
+            _onStreamFinished();
+          },
+          onDone: _onStreamFinished,
+        );
+  }
+
+  /// 单条辅助流结束（成功 done 或失败 error）时调用；全部结束后归位 loading。
+  void _onStreamFinished() {
+    // 新一轮 loadContent 已发起时忽略旧周期的回调。
+    if (_pendingCount == 0) return;
+    _pendingCount--;
+    if (_pendingCount == 0 && mounted) {
+      state = state.copyWith(isLoading: false);
+    }
   }
 
   void _cancelSubscriptions() {
