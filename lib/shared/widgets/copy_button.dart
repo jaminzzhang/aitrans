@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_tokens.dart';
 
-/// 通用复制按钮。
+/// 通用复制按钮（描边细胶囊族）。
 ///
-/// 复制成功即时变 ✓ 并触发触觉反馈（同一帧），2s 复原。
+/// 复制成功即时变 ✓ 并触发触觉反馈（同一帧），墨绿实色，2s 复原。
 /// 不弹 SnackBar——完成态以按钮自身反馈表达，避免喧宾夺主。
 class CopyButton extends StatefulWidget {
   final String text;
@@ -39,45 +39,41 @@ class _CopyButtonState extends State<CopyButton> {
   Widget build(BuildContext context) {
     final palette = AppColors.of(Theme.of(context).brightness);
     final copied = _copied;
-    return _ChipButton(
-      icon: Icon(
-        copied ? Icons.check_rounded : Icons.copy_rounded,
-        size: 15,
-        color: copied ? palette.success : palette.inkSecondary,
+    // 默认描边胶囊；已复制时切墨绿实色 + 白字。
+    final fill = copied ? palette.accent : Colors.transparent;
+    final fg = copied ? Colors.white : palette.inkSecondary;
+    final side = copied ? BorderSide.none : BorderSide(color: palette.divider);
+    return Material(
+      color: fill,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadii.pillRadius,
+        side: side,
       ),
-      label: Text(
-        copied ? (widget.copiedLabel ?? '已复制') : (widget.copyLabel ?? '复制'),
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: copied ? palette.success : palette.inkSecondary,
-        ),
-      ),
-      onTap: _copy,
-    );
-  }
-}
-
-/// 极简胶囊按钮：无填充背景、按下时轻高亮。
-class _ChipButton extends StatelessWidget {
-  final Widget icon;
-  final Widget label;
-  final VoidCallback onTap;
-
-  const _ChipButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadii.pill),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [icon, const SizedBox(width: 5), label],
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _copy,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                copied ? Icons.check_rounded : Icons.copy_rounded,
+                size: 15,
+                color: fg,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                copied
+                    ? (widget.copiedLabel ?? '已复制')
+                    : (widget.copyLabel ?? '复制'),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: fg,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

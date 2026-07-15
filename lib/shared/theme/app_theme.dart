@@ -3,8 +3,8 @@ import 'app_tokens.dart';
 
 /// 应用主题配置。
 ///
-/// 中性底色 + 系统蓝强调，弃用 Material 紫种子。
-/// 去涟漪、无外框输入、轻阴影卡片、极淡分割线，整体追求 Apple 式极简。
+/// 墨笺·文学杂志风：暖象牙纸底 + 松烟墨绿强调 + 朱砂点缀，弃用 Material 紫种子。
+/// 去涟漪、无外框输入、轻暖纸发丝分割、整体追求精装书内页的克制与温度。
 class AppTheme {
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
@@ -83,9 +83,10 @@ class AppTheme {
   }
 
   /// 排版：以 base 主题为底，覆盖关键角色样式。
+  /// 展示位（英雄译文、分节标题）切到衬线；正文/微标签保持无衬线 chrome。
   static TextTheme _textTheme(TextTheme base, AppPalette _) => base.copyWith(
-    displayMedium: AppTypography.hero(base.displayMedium!),
-    titleLarge: AppTypography.hero(base.titleLarge!),
+    displayMedium: AppTypography.editorial(base.displayMedium!),
+    titleLarge: AppTypography.editorial(base.titleLarge!),
     titleMedium: AppTypography.sectionHeader(base.titleMedium!),
     bodyLarge: AppTypography.body(base.bodyLarge!),
     bodyMedium: AppTypography.bodyMuted(base.bodyMedium!),

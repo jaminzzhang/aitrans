@@ -4,6 +4,7 @@ import '../theme/app_tokens.dart';
 /// 统一的空/加载/错误占位视图。
 ///
 /// 替代各处重复的 empty/loading/error builder。图标 + 文案，居中，克制。
+/// 墨笺版：empty 用墨绿衬线书卷气，error 用朱砂。
 class StateView extends StatelessWidget {
   final IconData? icon;
   final String? message;
@@ -49,7 +50,7 @@ class StateView extends StatelessWidget {
     final isError = icon == Icons.error_outline_rounded;
     final iconColor = isError ? palette.error : palette.inkTertiary;
     final textCol =
-        messageColor ?? (isError ? palette.error : palette.inkTertiary);
+        messageColor ?? (isError ? palette.error : palette.inkSecondary);
 
     return Center(
       child: Padding(
@@ -59,14 +60,15 @@ class StateView extends StatelessWidget {
           children: [
             if (icon != null) ...[
               Icon(icon, size: 40, color: iconColor),
-              const SizedBox(height: AppSpacing.sm),
+              const SizedBox(height: AppSpacing.md),
             ],
             if (message != null)
+              // 占位文案用衬线，呼应译文区的书卷气。
               Text(
                 message!,
-                style: AppTypography.bodyMuted(
+                style: AppTypography.serifSubtitle(
                   base.bodyMedium!,
-                ).copyWith(color: textCol),
+                ).copyWith(color: textCol, fontSize: 15),
                 textAlign: TextAlign.center,
               ),
             if (child != null) child!,

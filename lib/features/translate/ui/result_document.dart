@@ -12,6 +12,7 @@ import '../models/translate_state.dart';
 /// 结果文档：英雄译文 sticky + 向下滚动的三个辅助分节。
 ///
 /// 取代旧 TabBar 结构。译文常驻顶部，辅助内容靠留白分组，无硬分割线。
+/// 墨笺版式：衬线译文 + 朱砂细线 + 出版物级留白。
 class ResultDocument extends ConsumerWidget {
   const ResultDocument({super.key});
 
@@ -21,13 +22,14 @@ class ResultDocument extends ConsumerWidget {
     final auxiliary = ref.watch(auxiliaryControllerProvider);
 
     // scroll-edge 渐隐：内容滚到顶部时在边缘淡出，取代硬分割线。
+    // 调淡到几乎不可见，避免破坏暖纸纯净感。
     return ShaderMask(
       shaderCallback: (rect) {
         return LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: const [Colors.transparent, Colors.black, Colors.black],
-          stops: [0.0, 0.02, 1.0],
+          stops: [0.0, 0.015, 1.0],
         ).createShader(rect);
       },
       blendMode: BlendMode.dstIn,
@@ -39,7 +41,7 @@ class ResultDocument extends ConsumerWidget {
             SliverFillRemaining(
               hasScrollBody: false,
               child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
+                padding: const EdgeInsets.all(AppSpacing.xlg),
                 child: HeroTranslation(state: translateState),
               ),
             )
@@ -47,20 +49,20 @@ class ResultDocument extends ConsumerWidget {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.md,
-                  AppSpacing.md,
-                  AppSpacing.md,
                   AppSpacing.lg,
+                  AppSpacing.xl,
+                  AppSpacing.lg,
+                  AppSpacing.xxl,
                 ),
                 child: HeroTranslation(state: translateState),
               ),
             ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
+                AppSpacing.lg,
                 0,
-                AppSpacing.md,
-                AppSpacing.xl,
+                AppSpacing.lg,
+                AppSpacing.xxl,
               ),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
@@ -132,7 +134,7 @@ class _Section extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.md),
+      padding: const EdgeInsets.only(top: AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -193,6 +195,7 @@ class HeroTranslation extends StatelessWidget {
   }) {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
+    // 朱砂细下划线：译文下方的精装书扉页式分隔，宽约 36pt，极细。
     return SpringFadeIn(
       fadeKey: fadeKey,
       child: Column(
@@ -201,12 +204,22 @@ class HeroTranslation extends StatelessWidget {
         children: [
           SelectableText(
             text,
-            style: AppTypography.hero(
+            style: AppTypography.editorial(
               base.displayMedium!,
             ).copyWith(color: palette.inkPrimary),
           ),
+          // 朱砂细线：紧贴译文下方，留白后再放操作行。
           if (!isStreaming && text.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
+            Container(
+              width: 36,
+              height: 1.5,
+              decoration: BoxDecoration(
+                color: palette.seal,
+                borderRadius: AppRadii.pillRadius,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
             Row(
               children: [
                 CopyButton(text: text),
@@ -225,6 +238,7 @@ class HeroTranslation extends StatelessWidget {
   }
 }
 
+/// 描边细胶囊：墨绿描边 + 墨色文字，按下轻填充。
 class _GhostAction extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -240,23 +254,30 @@ class _GhostAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadii.pill),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: palette.inkSecondary),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: AppTypography.caption(
-                base.labelMedium!,
-              ).copyWith(color: palette.inkSecondary),
-            ),
-          ],
+    return Material(
+      color: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadii.pillRadius,
+        side: BorderSide(color: palette.divider),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: palette.inkSecondary),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: AppTypography.caption(
+                  base.labelMedium!,
+                ).copyWith(color: palette.inkSecondary),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -274,19 +295,20 @@ class ExampleCard extends StatelessWidget {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Tag(label: example.scene),
-          const SizedBox(height: AppSpacing.xs),
+          _SealTag(label: example.scene),
+          const SizedBox(height: AppSpacing.sm),
+          // 原文用衬线，释义用无衬线，形成层级。
           SelectableText(
             example.original,
-            style: AppTypography.body(
+            style: AppTypography.serifBody(
               base.bodyLarge!,
             ).copyWith(color: palette.inkPrimary),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           SelectableText(
             example.translation,
             style: AppTypography.bodyMuted(
@@ -308,30 +330,31 @@ class MovieQuoteCard extends StatelessWidget {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Icon(Icons.movie_outlined, size: 13, color: palette.inkTertiary),
-              const SizedBox(width: 4),
+              const SizedBox(width: 6),
               Text(
                 quote.movie,
                 style: AppTypography.caption(
                   base.labelSmall!,
-                ).copyWith(color: palette.inkTertiary),
+                ).copyWith(color: palette.inkTertiary, letterSpacing: 0.06),
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.sm),
+          // 台词用衬线斜体，带书卷气；保留外层引号以匹配测试断言。
           SelectableText(
             '"${quote.quote}"',
-            style: AppTypography.body(
+            style: AppTypography.serifQuote(
               base.bodyLarge!,
-            ).copyWith(fontStyle: FontStyle.italic, color: palette.inkPrimary),
+            ).copyWith(color: palette.inkPrimary),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           SelectableText(
             quote.translation,
             style: AppTypography.bodyMuted(
@@ -353,25 +376,30 @@ class ExamItemCard extends StatelessWidget {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Tag(label: item.source, muted: true),
-          const SizedBox(height: AppSpacing.xs),
+          _SealTag(label: item.source, muted: true),
+          const SizedBox(height: AppSpacing.sm),
           SelectableText(
             item.question,
-            style: AppTypography.body(
+            style: AppTypography.serifBody(
               base.bodyLarge!,
             ).copyWith(color: palette.inkPrimary),
           ),
-          const SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.sm),
+          // 答案区：暖纸 elevated 底 + 墨绿左边发丝线，书页批注感。
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(AppSpacing.sm + 2),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm + 2,
+            ),
             decoration: BoxDecoration(
-              color: palette.surfaceElevated.withValues(alpha: 0.6),
+              color: palette.surfaceElevated.withValues(alpha: 0.7),
               borderRadius: BorderRadius.circular(AppRadii.sm),
+              border: Border(left: BorderSide(color: palette.accent, width: 2)),
             ),
             child: SelectableText(
               item.answer,
@@ -386,22 +414,22 @@ class ExamItemCard extends StatelessWidget {
   }
 }
 
-class _Tag extends StatelessWidget {
+/// 印章式标签：圆角小标签，普通态墨绿描边，muted 态朱砂描边。
+class _SealTag extends StatelessWidget {
   final String label;
   final bool muted;
-  const _Tag({required this.label, this.muted = false});
+  const _SealTag({required this.label, this.muted = false});
 
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
-    final bg = muted ? palette.surfaceElevated : palette.accentMuted;
     final fg = muted ? palette.inkSecondary : palette.accent;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(AppRadii.pill),
+        border: Border.all(color: fg.withValues(alpha: 0.4)),
+        borderRadius: AppRadii.pillRadius,
       ),
       child: Text(
         label,

@@ -156,36 +156,54 @@ class _TitleBar extends ConsumerWidget {
   }) async {
     final selected = await showDialog<Language>(
       context: context,
-      builder: (dialogContext) => SimpleDialog(
-        title: Text(isSource ? '选择源语言' : '选择目标语言'),
-        children: (isSource ? Languages.source : Languages.target)
-            .map(
-              (language) => SimpleDialogOption(
-                onPressed: () => Navigator.of(dialogContext).pop(language),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 20,
-                      child: language == currentLanguage
-                          ? const Icon(Icons.check_rounded, size: 18)
-                          : null,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(language.nativeName),
-                    const SizedBox(width: 8),
-                    Text(
-                      language.name,
-                      style: TextStyle(
-                        color: Theme.of(dialogContext).colorScheme.outline,
-                        fontSize: 12,
+      builder: (dialogContext) {
+        final palette = AppColors.of(Theme.of(dialogContext).brightness);
+        final base = Theme.of(dialogContext).textTheme;
+        return SimpleDialog(
+          title: Text(
+            isSource ? '选择源语言' : '选择目标语言',
+            style: AppTypography.editorial(
+              base.titleLarge!,
+            ).copyWith(fontSize: 18, color: palette.inkPrimary),
+          ),
+          children: (isSource ? Languages.source : Languages.target)
+              .map(
+                (language) => SimpleDialogOption(
+                  onPressed: () => Navigator.of(dialogContext).pop(language),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        child: language == currentLanguage
+                            ? Icon(
+                                Icons.check_rounded,
+                                size: 18,
+                                color: palette.seal,
+                              )
+                            : null,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      // 语言名用衬线，呼应译文区书卷气。
+                      Text(
+                        language.nativeName,
+                        style: AppTypography.serifBody(
+                          base.bodyLarge!,
+                        ).copyWith(color: palette.inkPrimary),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        language.name,
+                        style: AppTypography.caption(
+                          base.labelSmall!,
+                        ).copyWith(color: palette.inkTertiary),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            )
-            .toList(),
-      ),
+              )
+              .toList(),
+        );
+      },
     );
     if (selected == null || selected == currentLanguage) return;
 

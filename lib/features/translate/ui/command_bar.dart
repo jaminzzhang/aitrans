@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/theme/app_tokens.dart';
 import '../logic/translate_controller.dart';
 
-/// 顶部命令条：毛玻璃材质 + 搜索图标 + 输入 + 内联翻译/清空。
+/// 顶部命令条：暖纸毛玻璃材质 + 搜索图标 + 输入 + 内联翻译/清空。
 ///
 /// 替代旧 TranslateInputField。保留现有 controller 接入（防抖、translateNow、
 /// loadContent、Cmd+K 清空），只重构视觉。修复旧代码每次 build 新建 FocusNode 的 bug。
@@ -183,6 +183,7 @@ class _IconAction extends StatelessWidget {
   }
 }
 
+/// 翻译主胶囊：墨绿填充 + 白字，主操作。
 class _TranslateChip extends StatelessWidget {
   final VoidCallback onSubmit;
   const _TranslateChip({required this.onSubmit});
@@ -198,17 +199,19 @@ class _TranslateChip extends StatelessWidget {
         onTap: onSubmit,
         borderRadius: BorderRadius.circular(AppRadii.pill),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 '翻译',
-                style: AppTypography.caption(
-                  base.labelMedium!,
-                ).copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+                style: AppTypography.caption(base.labelMedium!).copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.06,
+                ),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 5),
               Icon(
                 Icons.keyboard_return_rounded,
                 size: 14,
