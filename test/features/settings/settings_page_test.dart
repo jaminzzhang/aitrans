@@ -1,6 +1,7 @@
 import 'package:aitrans/core/ai/provider_factory.dart';
 import 'package:aitrans/core/config/ai_config.dart';
 import 'package:aitrans/core/config/settings_repository.dart';
+import 'package:aitrans/core/platform/menu_bar_preference_service.dart';
 import 'package:aitrans/features/settings/ui/settings_page.dart';
 import 'package:aitrans/features/translate/logic/translate_controller.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,9 @@ void main() {
       overrides: [
         settingsRepositoryProvider.overrideWithValue(
           _UnusedSettingsRepository(),
+        ),
+        menuBarPreferenceServiceProvider.overrideWithValue(
+          _UnsupportedMenuBarPreferenceService(),
         ),
       ],
     );
@@ -55,4 +59,16 @@ class _UnusedSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> resetCredentials() async {}
+}
+
+class _UnsupportedMenuBarPreferenceService implements MenuBarPreferenceService {
+  @override
+  bool get isSupported => false;
+
+  @override
+  Future<bool> getVisibility() => throw UnsupportedError('unsupported');
+
+  @override
+  Future<void> setVisibility(bool visible) =>
+      throw UnsupportedError('unsupported');
 }

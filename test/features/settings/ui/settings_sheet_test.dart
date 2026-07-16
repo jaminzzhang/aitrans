@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aitrans/core/ai/provider_factory.dart';
 import 'package:aitrans/core/config/ai_config.dart';
 import 'package:aitrans/core/config/settings_repository.dart';
+import 'package:aitrans/core/platform/menu_bar_preference_service.dart';
 import 'package:aitrans/features/settings/ui/settings_page.dart';
 import 'package:aitrans/features/translate/logic/translate_controller.dart';
 import 'package:aitrans/shared/theme/app_theme.dart';
@@ -14,6 +15,7 @@ Future<ProviderContainer> _openSheet(
   WidgetTester tester, {
   required AIConfig initialConfig,
   required _FakeSettingsRepository repository,
+  _FakeMenuBarPreferenceService? menuBarPreferenceService,
   String? storageError,
 }) async {
   // 设置页以 dialog 形式呈现：直接 pump 一个 SettingsSheet。
@@ -26,6 +28,9 @@ Future<ProviderContainer> _openSheet(
       overrides: [
         aiConfigProvider.overrideWith((ref) => initialConfig),
         settingsRepositoryProvider.overrideWithValue(repository),
+        menuBarPreferenceServiceProvider.overrideWithValue(
+          menuBarPreferenceService ?? _FakeMenuBarPreferenceService(),
+        ),
         initialSettingsStorageErrorProvider.overrideWithValue(storageError),
       ],
       child: MaterialApp(
@@ -43,6 +48,88 @@ Future<ProviderContainer> _openSheet(
 
 void main() {
   group('SettingsSheet', () {
+    testWidgets('shows and applies the macOS menu bar visibility preference', (
+      tester,
+    ) async {
+      final service = _FakeMenuBarPreferenceService(initialVisibility: true);
+      await _openSheet(
+        tester,
+        initialConfig: AIConfig(providerType: ProviderType.ollama),
+        repository: _FakeSettingsRepository(),
+        menuBarPreferenceService: service,
+      );
+
+      expect(find.text('在状态栏显示 AITrans'), findsOneWidget);
+      expect(
+        tester
+            .widget<Switch>(
+              find.byKey(const ValueKey('menu-bar-visibility-switch')),
+            )
+            .value,
+        isTrue,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('menu-bar-visibility-switch')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(service.appliedValues, [false]);
+      expect(
+        tester
+            .widget<Switch>(
+              find.byKey(const ValueKey('menu-bar-visibility-switch')),
+            )
+            .value,
+        isFalse,
+      );
+    });
+
+    testWidgets('keeps the previous menu bar value when native update fails', (
+      tester,
+    ) async {
+      final service = _FakeMenuBarPreferenceService(
+        initialVisibility: true,
+        failSet: true,
+      );
+      await _openSheet(
+        tester,
+        initialConfig: AIConfig(providerType: ProviderType.ollama),
+        repository: _FakeSettingsRepository(),
+        menuBarPreferenceService: service,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('menu-bar-visibility-switch')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Switch>(
+              find.byKey(const ValueKey('menu-bar-visibility-switch')),
+            )
+            .value,
+        isTrue,
+      );
+      expect(find.text('无法更新状态栏设置，请重试'), findsOneWidget);
+    });
+
+    testWidgets('does not show the menu bar preference when unsupported', (
+      tester,
+    ) async {
+      await _openSheet(
+        tester,
+        initialConfig: AIConfig(providerType: ProviderType.ollama),
+        repository: _FakeSettingsRepository(),
+        menuBarPreferenceService: _FakeMenuBarPreferenceService(
+          isSupported: false,
+        ),
+      );
+
+      expect(find.text('在状态栏显示 AITrans'), findsNothing);
+    });
+
     testWidgets('lists all providers including Qwen (6 total)', (tester) async {
       await _openSheet(
         tester,
@@ -290,4 +377,27 @@ class _FakeSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> resetCredentials() async => resetCount++;
+}
+
+class _FakeMenuBarPreferenceService implements MenuBarPreferenceService {
+  _FakeMenuBarPreferenceService({
+    this.isSupported = true,
+    this.initialVisibility = true,
+    this.failSet = false,
+  });
+
+  @override
+  final bool isSupported;
+  final bool initialVisibility;
+  final bool failSet;
+  final List<bool> appliedValues = [];
+
+  @override
+  Future<bool> getVisibility() async => initialVisibility;
+
+  @override
+  Future<void> setVisibility(bool visible) async {
+    if (failSet) throw StateError('synthetic menu bar update failure');
+    appliedValues.add(visible);
+  }
 }

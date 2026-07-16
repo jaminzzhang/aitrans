@@ -3,6 +3,7 @@ import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
+    MainWindowRegistry.shared.register(self)
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
@@ -10,6 +11,9 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     ExternalTranslationBridge.shared.attach(
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    MenuBarPreferenceBridge.shared.attach(
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
 

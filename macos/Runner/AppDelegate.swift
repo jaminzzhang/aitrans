@@ -1,6 +1,281 @@
 import Cocoa
 import FlutterMacOS
 
+final class MenuBarVisibilityPreferences {
+  static let defaultKey = "menuBarItemVisible"
+
+  private let defaults: UserDefaults
+  private let key: String
+
+  init(defaults: UserDefaults = .standard, key: String = defaultKey) {
+    self.defaults = defaults
+    self.key = key
+  }
+
+  var isVisible: Bool {
+    get { defaults.object(forKey: key) as? Bool ?? true }
+    set { defaults.set(newValue, forKey: key) }
+  }
+}
+
+protocol MenuBarStatusItem: AnyObject {
+  func configure(
+    image: NSImage?,
+    fallbackTitle: String,
+    toolTip: String,
+    target: AnyObject,
+    action: Selector
+  )
+  func remove()
+}
+
+final class AppKitMenuBarStatusItem: MenuBarStatusItem {
+  private let statusBar: NSStatusBar
+  private let statusItem: NSStatusItem
+
+  init(statusBar: NSStatusBar = .system) {
+    self.statusBar = statusBar
+    statusItem = statusBar.statusItem(withLength: NSStatusItem.squareLength)
+  }
+
+  func configure(
+    image: NSImage?,
+    fallbackTitle: String,
+    toolTip: String,
+    target: AnyObject,
+    action: Selector
+  ) {
+    guard let button = statusItem.button else { return }
+    button.image = image
+    button.title = image == nil ? fallbackTitle : ""
+    button.toolTip = toolTip
+    button.setAccessibilityLabel("AITrans")
+    button.target = target
+    button.action = action
+  }
+
+  func remove() {
+    statusBar.removeStatusItem(statusItem)
+  }
+}
+
+final class MenuBarStatusController: NSObject {
+  static let shared = MenuBarStatusController(
+    preferences: MenuBarVisibilityPreferences(),
+    makeStatusItem: { AppKitMenuBarStatusItem() },
+    imageLoader: { NSImage(named: NSImage.Name("MenuBarIcon")) },
+    onToggleMainWindow: { MainWindowPresenter.shared.toggleMainWindow() }
+  )
+
+  private let preferences: MenuBarVisibilityPreferences
+  private let makeStatusItem: () -> MenuBarStatusItem
+  private let imageLoader: () -> NSImage?
+  private let onToggleMainWindow: () -> Void
+  private var statusItem: MenuBarStatusItem?
+
+  init(
+    preferences: MenuBarVisibilityPreferences,
+    makeStatusItem: @escaping () -> MenuBarStatusItem,
+    imageLoader: @escaping () -> NSImage?,
+    onToggleMainWindow: @escaping () -> Void
+  ) {
+    self.preferences = preferences
+    self.makeStatusItem = makeStatusItem
+    self.imageLoader = imageLoader
+    self.onToggleMainWindow = onToggleMainWindow
+  }
+
+  var isVisible: Bool { statusItem != nil }
+
+  func applyStoredPreference() {
+    setVisible(preferences.isVisible)
+  }
+
+  func setVisible(_ visible: Bool) {
+    if visible {
+      guard statusItem == nil else {
+        preferences.isVisible = true
+        return
+      }
+      let newItem = makeStatusItem()
+      let image = imageLoader()
+      image?.isTemplate = true
+      newItem.configure(
+        image: image,
+        fallbackTitle: "A",
+        toolTip: "显示或关闭 AITrans",
+        target: self,
+        action: #selector(handleStatusItemClick(_:))
+      )
+      statusItem = newItem
+    } else {
+      statusItem?.remove()
+      statusItem = nil
+    }
+    preferences.isVisible = visible
+  }
+
+  @objc private func handleStatusItemClick(_ sender: Any?) {
+    onToggleMainWindow()
+  }
+}
+
+enum MenuBarPreferenceMethodError: Error, Equatable {
+  case invalidVisibility
+  case unsupportedMethod
+}
+
+final class MenuBarPreferenceMethodHandler {
+  private let getVisibility: () -> Bool
+  private let setVisibility: (Bool) -> Void
+
+  init(
+    getVisibility: @escaping () -> Bool,
+    setVisibility: @escaping (Bool) -> Void
+  ) {
+    self.getVisibility = getVisibility
+    self.setVisibility = setVisibility
+  }
+
+  convenience init(controller: MenuBarStatusController) {
+    self.init(
+      getVisibility: { controller.isVisible },
+      setVisibility: { controller.setVisible($0) }
+    )
+  }
+
+  func handle(method: String, arguments: Any?) throws -> Any? {
+    switch method {
+    case "getVisibility":
+      return getVisibility()
+    case "setVisibility":
+      guard let visible = arguments as? Bool else {
+        throw MenuBarPreferenceMethodError.invalidVisibility
+      }
+      setVisibility(visible)
+      return getVisibility()
+    default:
+      throw MenuBarPreferenceMethodError.unsupportedMethod
+    }
+  }
+}
+
+final class MenuBarPreferenceBridge {
+  static let shared = MenuBarPreferenceBridge()
+
+  private var channel: FlutterMethodChannel?
+
+  func attach(
+    binaryMessenger: FlutterBinaryMessenger,
+    controller: MenuBarStatusController = .shared
+  ) {
+    let channel = FlutterMethodChannel(
+      name: "com.aitrans/menu_bar_preferences",
+      binaryMessenger: binaryMessenger
+    )
+    let handler = MenuBarPreferenceMethodHandler(controller: controller)
+    self.channel = channel
+    channel.setMethodCallHandler { call, result in
+      do {
+        result(try handler.handle(method: call.method, arguments: call.arguments))
+      } catch MenuBarPreferenceMethodError.unsupportedMethod {
+        result(FlutterMethodNotImplemented)
+      } catch {
+        result(
+          FlutterError(
+            code: "invalid_menu_bar_visibility",
+            message: "状态栏可见性参数无效。",
+            details: nil
+          )
+        )
+      }
+    }
+  }
+}
+
+protocol MainWindowPresentable: AnyObject {
+  var isKeyWindow: Bool { get }
+  var isMiniaturized: Bool { get }
+  var isVisible: Bool { get }
+  func deminiaturize(_ sender: Any?)
+  func makeKeyAndOrderFront(_ sender: Any?)
+  func close()
+}
+
+extension NSWindow: MainWindowPresentable {}
+
+final class MainWindowRegistry {
+  static let shared = MainWindowRegistry()
+
+  private(set) var mainWindow: MainWindowPresentable?
+
+  func register(_ window: MainWindowPresentable) {
+    mainWindow = window
+  }
+}
+
+final class MainWindowPresenter {
+  static let shared = MainWindowPresenter(
+    windowProvider: {
+      MainWindowRegistry.shared.mainWindow
+        ?? NSApp.windows.first { $0 is MainFlutterWindow }
+    },
+    activateApplication: {
+      NSApp.unhide(nil)
+      NSApp.activate(ignoringOtherApps: true)
+    }
+  )
+
+  private let windowProvider: () -> MainWindowPresentable?
+  private let activateApplication: () -> Void
+
+  init(
+    windowProvider: @escaping () -> MainWindowPresentable?,
+    activateApplication: @escaping () -> Void
+  ) {
+    self.windowProvider = windowProvider
+    self.activateApplication = activateApplication
+  }
+
+  @discardableResult
+  func showMainWindow() -> Bool {
+    guard let window = windowProvider() else { return false }
+    return show(window)
+  }
+
+  @discardableResult
+  func toggleMainWindow() -> Bool {
+    guard let window = windowProvider() else { return false }
+    if window.isVisible && window.isKeyWindow && !window.isMiniaturized {
+      window.close()
+      return false
+    }
+    return show(window)
+  }
+
+  private func show(_ window: MainWindowPresentable) -> Bool {
+    if window.isMiniaturized {
+      window.deminiaturize(nil)
+    }
+    activateApplication()
+    window.makeKeyAndOrderFront(nil)
+    return true
+  }
+}
+
+final class ApplicationLifecycleController {
+  private let showMainWindow: () -> Bool
+
+  init(showMainWindow: @escaping () -> Bool) {
+    self.showMainWindow = showMainWindow
+  }
+
+  func handleDockReopen() -> Bool {
+    _ = showMainWindow()
+    return false
+  }
+}
+
 enum ServiceRequestError: LocalizedError, Equatable {
   case invalidItemCount
   case plainTextUnavailable
@@ -90,8 +365,7 @@ final class ExternalTranslationBridge {
 
   func receive(_ request: NativeExternalTranslationRequest) {
     DispatchQueue.main.async {
-      NSApp.activate(ignoringOtherApps: true)
-      NSApp.windows.first?.makeKeyAndOrderFront(nil)
+      MainWindowPresenter.shared.showMainWindow()
       self.buffer.receive(request)
     }
   }
@@ -152,13 +426,24 @@ class AppDelegate: FlutterAppDelegate {
     ExternalTranslationBridge.shared.receive(request)
   }
   private let serviceRegistration = MacOSServiceRegistration()
+  private let lifecycleController = ApplicationLifecycleController(
+    showMainWindow: { MainWindowPresenter.shared.showMainWindow() }
+  )
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
     serviceRegistration.ensureRegistered(provider: translationServiceProvider)
+    MenuBarStatusController.shared.applyStoredPreference()
   }
 
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-    return true
+    return false
+  }
+
+  override func applicationShouldHandleReopen(
+    _ sender: NSApplication,
+    hasVisibleWindows flag: Bool
+  ) -> Bool {
+    return lifecycleController.handleDockReopen()
   }
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {

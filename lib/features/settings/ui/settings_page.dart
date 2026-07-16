@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ai/ai_provider.dart';
 import '../../../core/ai/provider_factory.dart';
 import '../../../core/config/ai_config.dart';
+import '../../../core/platform/menu_bar_preference_service.dart';
 import '../../../shared/theme/app_tokens.dart';
 import '../../translate/logic/translate_controller.dart';
 
@@ -27,10 +28,14 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
   bool _isResettingCredentials = false;
   bool _isLoadingProvider = false;
   bool _credentialEditedWhileLoading = false;
+  bool? _menuBarVisible;
+  bool _isChangingMenuBarVisibility = false;
+  String? _menuBarVisibilityError;
   int _providerLoadGeneration = 0;
   String? _connectionStatus;
   bool _connectionOk = false;
   late ProviderType _selectedProvider;
+  late final MenuBarPreferenceService _menuBarPreferenceService;
   final Map<ProviderType, AIConfig> _drafts = {};
 
   @override
@@ -42,6 +47,10 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
     _baseUrlController.text = config.baseUrl ?? '';
     _modelController.text = config.model ?? '';
     _drafts[config.providerType] = config;
+    _menuBarPreferenceService = ref.read(menuBarPreferenceServiceProvider);
+    if (_menuBarPreferenceService.isSupported) {
+      _loadMenuBarVisibility();
+    }
   }
 
   @override
@@ -161,6 +170,44 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
     _baseUrlController.text = draft.baseUrl ?? '';
     _modelController.text = draft.model ?? '';
     if (mounted) setState(() => _isLoadingProvider = false);
+  }
+
+  Future<void> _loadMenuBarVisibility() async {
+    try {
+      final visible = await _menuBarPreferenceService.getVisibility();
+      if (!mounted) return;
+      setState(() {
+        _menuBarVisible = visible;
+        _menuBarVisibilityError = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _menuBarVisibilityError = '无法读取状态栏设置，请重试';
+      });
+    }
+  }
+
+  Future<void> _setMenuBarVisibility(bool visible) async {
+    if (_isChangingMenuBarVisibility || _menuBarVisible == null) return;
+    setState(() {
+      _isChangingMenuBarVisibility = true;
+      _menuBarVisibilityError = null;
+    });
+    try {
+      await _menuBarPreferenceService.setVisibility(visible);
+      if (!mounted) return;
+      setState(() => _menuBarVisible = visible);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _menuBarVisibilityError = '无法更新状态栏设置，请重试';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isChangingMenuBarVisibility = false);
+      }
+    }
   }
 
   Future<void> _save() async {
@@ -365,6 +412,57 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
                       ),
                     ],
                     const SizedBox(height: AppSpacing.xl),
+
+                    if (_menuBarPreferenceService.isSupported) ...[
+                      _SectionLabel(text: 'macOS'),
+                      const SizedBox(height: AppSpacing.sm),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '在状态栏显示 AITrans',
+                                  style: AppTypography.bodyMuted(
+                                    base.bodyMedium!,
+                                  ).copyWith(color: palette.inkPrimary),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '关闭主窗口后，可从状态栏重新打开',
+                                  style: AppTypography.caption(
+                                    base.labelSmall!,
+                                  ).copyWith(color: palette.inkTertiary),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Material(
+                            color: Colors.transparent,
+                            child: Switch(
+                              key: const ValueKey('menu-bar-visibility-switch'),
+                              value: _menuBarVisible ?? false,
+                              onChanged:
+                                  _menuBarVisible == null ||
+                                      _isChangingMenuBarVisibility
+                                  ? null
+                                  : _setMenuBarVisibility,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_menuBarVisibilityError != null) ...[
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          _menuBarVisibilityError!,
+                          style: AppTypography.caption(
+                            base.labelSmall!,
+                          ).copyWith(color: palette.error),
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.xl),
+                    ],
 
                     _SectionLabel(text: '快捷键'),
                     const SizedBox(height: AppSpacing.sm),

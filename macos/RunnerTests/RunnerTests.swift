@@ -5,6 +5,198 @@ import XCTest
 
 class RunnerTests: XCTestCase {
 
+  func testAppDelegateKeepsRunningAfterLastWindowCloses() {
+    let delegate = AppDelegate()
+
+    XCTAssertFalse(delegate.applicationShouldTerminateAfterLastWindowClosed(NSApp))
+  }
+
+  func testApplicationLifecycleControllerReopensTheExistingWindowFromDock() {
+    var presentationCount = 0
+    let controller = ApplicationLifecycleController(
+      showMainWindow: {
+        presentationCount += 1
+        return true
+      }
+    )
+
+    XCTAssertFalse(controller.handleDockReopen())
+    XCTAssertEqual(presentationCount, 1)
+  }
+
+  func testMenuBarPreferenceMethodHandlerGetsAndSetsTypedVisibility() throws {
+    var appliedValues: [Bool] = []
+    var visibility = true
+    let handler = MenuBarPreferenceMethodHandler(
+      getVisibility: { visibility },
+      setVisibility: {
+        visibility = $0
+        appliedValues.append($0)
+      }
+    )
+
+    XCTAssertEqual(
+      try handler.handle(method: "getVisibility", arguments: nil) as? Bool,
+      true
+    )
+    XCTAssertEqual(
+      try handler.handle(method: "setVisibility", arguments: false) as? Bool,
+      false
+    )
+    XCTAssertEqual(appliedValues, [false])
+  }
+
+  func testMenuBarPreferenceMethodHandlerRejectsInvalidCalls() {
+    let handler = MenuBarPreferenceMethodHandler(
+      getVisibility: { true },
+      setVisibility: { _ in }
+    )
+
+    XCTAssertThrowsError(
+      try handler.handle(method: "setVisibility", arguments: "false")
+    ) { error in
+      XCTAssertEqual(error as? MenuBarPreferenceMethodError, .invalidVisibility)
+    }
+    XCTAssertThrowsError(
+      try handler.handle(method: "unknown", arguments: nil)
+    ) { error in
+      XCTAssertEqual(error as? MenuBarPreferenceMethodError, .unsupportedMethod)
+    }
+  }
+
+  func testMenuBarVisibilityDefaultsToVisibleAndPersistsExplicitChoice() {
+    let suiteName = "test.menu-bar-preferences.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let preferences = MenuBarVisibilityPreferences(defaults: defaults)
+
+    XCTAssertTrue(preferences.isVisible)
+
+    preferences.isVisible = false
+
+    XCTAssertFalse(MenuBarVisibilityPreferences(defaults: defaults).isVisible)
+  }
+
+  func testBundleContainsTheMenuBarTemplateIcon() {
+    XCTAssertNotNil(NSImage(named: NSImage.Name("MenuBarIcon")))
+  }
+
+  func testMenuBarStatusControllerAppliesStoredPreferenceIdempotentlyAndTogglesWindow() {
+    let suiteName = "test.menu-bar-controller.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let preferences = MenuBarVisibilityPreferences(defaults: defaults)
+    var createdItems: [FakeMenuBarStatusItem] = []
+    var toggleCount = 0
+    let controller = MenuBarStatusController(
+      preferences: preferences,
+      makeStatusItem: {
+        let item = FakeMenuBarStatusItem()
+        createdItems.append(item)
+        return item
+      },
+      imageLoader: { nil },
+      onToggleMainWindow: { toggleCount += 1 }
+    )
+
+    controller.applyStoredPreference()
+    controller.setVisible(true)
+
+    XCTAssertTrue(controller.isVisible)
+    XCTAssertEqual(createdItems.count, 1)
+    XCTAssertEqual(createdItems[0].title, "A")
+    XCTAssertEqual(createdItems[0].toolTip, "显示或关闭 AITrans")
+
+    createdItems[0].triggerClick()
+    XCTAssertEqual(toggleCount, 1)
+
+    controller.setVisible(false)
+    controller.setVisible(false)
+
+    XCTAssertFalse(controller.isVisible)
+    XCTAssertTrue(createdItems[0].wasRemoved)
+    XCTAssertFalse(preferences.isVisible)
+  }
+
+  func testMainWindowPresenterRestoresTheExistingMinimizedWindow() {
+    let window = FakeMainWindow(isMiniaturized: true)
+    var activationCount = 0
+    let presenter = MainWindowPresenter(
+      windowProvider: { window },
+      activateApplication: { activationCount += 1 }
+    )
+
+    XCTAssertTrue(presenter.showMainWindow())
+
+    XCTAssertFalse(window.isMiniaturized)
+    XCTAssertTrue(window.isVisible)
+    XCTAssertTrue(window.isKey)
+    XCTAssertEqual(activationCount, 1)
+  }
+
+  func testMainWindowPresenterTogglesVisibleWindowClosedThenOpen() {
+    let window = FakeMainWindow(isMiniaturized: false, isVisible: true)
+    var activationCount = 0
+    let presenter = MainWindowPresenter(
+      windowProvider: { window },
+      activateApplication: { activationCount += 1 }
+    )
+
+    XCTAssertFalse(presenter.toggleMainWindow())
+    XCTAssertFalse(window.isVisible)
+    XCTAssertFalse(window.isKey)
+    XCTAssertEqual(activationCount, 0)
+
+    XCTAssertTrue(presenter.toggleMainWindow())
+    XCTAssertTrue(window.isVisible)
+    XCTAssertTrue(window.isKey)
+    XCTAssertEqual(activationCount, 1)
+  }
+
+  func testMainWindowPresenterShowsNonKeyWindowWhenVisibilityIsStale() {
+    let window = FakeMainWindow(
+      isMiniaturized: false,
+      isVisible: true,
+      isKey: false
+    )
+    var activationCount = 0
+    let presenter = MainWindowPresenter(
+      windowProvider: { window },
+      activateApplication: { activationCount += 1 }
+    )
+
+    XCTAssertTrue(presenter.toggleMainWindow())
+    XCTAssertTrue(window.isVisible)
+    XCTAssertTrue(window.isKey)
+    XCTAssertEqual(activationCount, 1)
+  }
+
+  func testMainWindowRegistryKeepsClosedWindowAvailableForToggleReopen() {
+    let registry = MainWindowRegistry()
+    let window = FakeMainWindow(isMiniaturized: false, isVisible: true)
+    registry.register(window)
+    let presenter = MainWindowPresenter(
+      windowProvider: { registry.mainWindow },
+      activateApplication: {}
+    )
+
+    XCTAssertFalse(presenter.toggleMainWindow())
+    XCTAssertTrue(registry.mainWindow === window)
+    XCTAssertTrue(presenter.toggleMainWindow())
+    XCTAssertTrue(window.isVisible)
+  }
+
+  func testMainWindowPresenterReportsMissingWindowWithoutActivating() {
+    var activationCount = 0
+    let presenter = MainWindowPresenter(
+      windowProvider: { nil },
+      activateApplication: { activationCount += 1 }
+    )
+
+    XCTAssertFalse(presenter.showMainWindow())
+    XCTAssertEqual(activationCount, 0)
+  }
+
   func testBundleDeclaresHostCompatibleTextService() throws {
     let services = try XCTUnwrap(
       Bundle.main.object(forInfoDictionaryKey: "NSServices") as? [[String: Any]]
@@ -127,4 +319,71 @@ class RunnerTests: XCTestCase {
     return pasteboard
   }
 
+}
+
+private final class FakeMenuBarStatusItem: MenuBarStatusItem {
+  private(set) var image: NSImage?
+  private(set) var title = ""
+  private(set) var toolTip: String?
+  private(set) var wasRemoved = false
+  private weak var target: AnyObject?
+  private var action: Selector?
+
+  func configure(
+    image: NSImage?,
+    fallbackTitle: String,
+    toolTip: String,
+    target: AnyObject,
+    action: Selector
+  ) {
+    self.image = image
+    title = image == nil ? fallbackTitle : ""
+    self.toolTip = toolTip
+    self.target = target
+    self.action = action
+  }
+
+  func remove() {
+    wasRemoved = true
+  }
+
+  func triggerClick() {
+    guard let target, let action else {
+      XCTFail("Status item action was not configured.")
+      return
+    }
+    _ = target.perform(action, with: self)
+  }
+}
+
+private final class FakeMainWindow: MainWindowPresentable {
+  var isMiniaturized: Bool
+  private(set) var isVisible: Bool
+  private(set) var isKey = false
+
+  var isKeyWindow: Bool { isKey }
+
+  init(
+    isMiniaturized: Bool,
+    isVisible: Bool = false,
+    isKey: Bool? = nil
+  ) {
+    self.isMiniaturized = isMiniaturized
+    self.isVisible = isVisible
+    self.isKey = isKey ?? isVisible
+  }
+
+  func deminiaturize(_ sender: Any?) {
+    isMiniaturized = false
+  }
+
+  func makeKeyAndOrderFront(_ sender: Any?) {
+    isVisible = true
+    isKey = true
+  }
+
+  func close() {
+    isVisible = false
+    isKey = false
+  }
 }
