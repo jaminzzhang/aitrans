@@ -94,10 +94,14 @@ void main() {
       expect(find.text('复制'), findsOneWidget);
     });
 
-    testWidgets('emphasizes only the primary meaning', (tester) async {
+    testWidgets('shows lexical metadata without competing with the meaning', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _wrap(
-          const TranslateComplete('意外发现\n- 偶然发现\n- 机缘巧合'),
+          const TranslateComplete(
+            '意外发现\nPOS: noun\nPRON: /ˌserənˈdɪpəti/\n- 偶然发现\n- 机缘巧合',
+          ),
           const AuxiliaryState(),
         ),
       );
@@ -110,6 +114,8 @@ void main() {
         find.widgetWithText(SelectableText, '偶然发现'),
       );
 
+      expect(find.text('noun'), findsOneWidget);
+      expect(find.text('/ˌserənˈdɪpəti/'), findsOneWidget);
       expect(find.text('机缘巧合'), findsOneWidget);
       expect(primary.style!.fontSize, greaterThan(secondary.style!.fontSize!));
     });

@@ -20,6 +20,7 @@ class CommandBar extends ConsumerStatefulWidget {
 class _CommandBarState extends ConsumerState<CommandBar> {
   final _controller = TextEditingController();
   late final FocusNode _focusNode;
+  bool _wasComposing = false;
 
   @override
   void initState() {
@@ -39,12 +40,27 @@ class _CommandBarState extends ConsumerState<CommandBar> {
 
   void _onChanged(String value) {
     ref.read(inputTextProvider.notifier).state = value;
+    final isComposing = _hasActiveComposition;
+    if (isComposing) {
+      _wasComposing = true;
+      return;
+    }
+    if (_wasComposing) {
+      _wasComposing = false;
+      return;
+    }
     ref.read(translateControllerProvider.notifier).onTextChanged(value);
   }
 
   void _onSubmitted(String value) {
+    if (_hasActiveComposition) return;
     ref.read(auxiliaryControllerProvider.notifier).clear();
     ref.read(translateControllerProvider.notifier).translateNow(value);
+  }
+
+  bool get _hasActiveComposition {
+    final composing = _controller.value.composing;
+    return composing.isValid && !composing.isCollapsed;
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
@@ -55,6 +71,7 @@ class _CommandBarState extends ConsumerState<CommandBar> {
     if (event is KeyDownEvent &&
         isEnter &&
         !HardwareKeyboard.instance.isShiftPressed) {
+      if (_hasActiveComposition) return KeyEventResult.ignored;
       _onSubmitted(_controller.text);
       return KeyEventResult.handled;
     }
@@ -62,6 +79,7 @@ class _CommandBarState extends ConsumerState<CommandBar> {
   }
 
   void _clear() {
+    _wasComposing = false;
     _controller.clear();
     ref.read(inputTextProvider.notifier).state = '';
     ref.read(translateControllerProvider.notifier).clear();
@@ -71,6 +89,7 @@ class _CommandBarState extends ConsumerState<CommandBar> {
 
   void _syncExternalInput(String inputText) {
     if (_controller.text == inputText) return;
+    _wasComposing = false;
     _controller.value = TextEditingValue(
       text: inputText,
       selection: TextSelection.collapsed(offset: inputText.length),

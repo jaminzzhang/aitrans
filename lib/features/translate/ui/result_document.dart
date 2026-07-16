@@ -210,37 +210,90 @@ class HeroTranslation extends StatelessWidget {
               base.displayMedium!,
             ).copyWith(color: palette.inkPrimary),
           ),
-          if (presentation.secondaryMeanings.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.md),
-            for (final meaning in presentation.secondaryMeanings)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Container(
-                        width: 4,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: palette.seal,
-                          shape: BoxShape.circle,
+          if (presentation.partOfSpeech != null ||
+              presentation.pronunciation != null) ...[
+            const SizedBox(height: AppSpacing.sm + AppSpacing.xs),
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (presentation.partOfSpeech case final partOfSpeech?)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: palette.accentMuted,
+                      borderRadius: AppRadii.pillRadius,
+                    ),
+                    child: Text(
+                      partOfSpeech,
+                      style: AppTypography.caption(
+                        base.labelMedium!,
+                      ).copyWith(color: palette.accent),
+                    ),
+                  ),
+                if (presentation.pronunciation case final pronunciation?)
+                  SelectableText(
+                    pronunciation,
+                    style: AppTypography.serifSubtitle(base.bodyMedium!)
+                        .copyWith(
+                          color: palette.inkSecondary,
+                          fontStyle: FontStyle.italic,
+                          letterSpacing: 0.02,
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: SelectableText(
-                        meaning,
-                        style: AppTypography.serifBody(
-                          base.bodyLarge!,
-                        ).copyWith(color: palette.inkSecondary),
-                      ),
-                    ),
-                  ],
+                  ),
+              ],
+            ),
+          ],
+          if (presentation.secondaryMeanings.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.lg),
+            Container(
+              padding: const EdgeInsets.only(left: AppSpacing.md),
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: palette.divider, width: 1.5),
                 ),
               ),
+              child: Column(
+                children: [
+                  for (final (index, meaning)
+                      in presentation.secondaryMeanings.indexed)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        bottom:
+                            index == presentation.secondaryMeanings.length - 1
+                            ? 0
+                            : AppSpacing.sm,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 24,
+                            child: Text(
+                              '${index + 1}'.padLeft(2, '0'),
+                              style: AppTypography.caption(
+                                base.labelSmall!,
+                              ).copyWith(color: palette.seal),
+                            ),
+                          ),
+                          Expanded(
+                            child: SelectableText(
+                              meaning,
+                              style: AppTypography.serifBody(
+                                base.bodyLarge!,
+                              ).copyWith(color: palette.inkSecondary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ],
           // 朱砂细线：紧贴译文下方，留白后再放操作行。
           if (!isStreaming && text.isNotEmpty) ...[

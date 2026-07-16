@@ -17,6 +17,7 @@ Desktop.ini
 .swiftpm/
 migrate_working_dir/
 .zcode/
+graphify-out/
 
 # Local environment and secret files
 .env

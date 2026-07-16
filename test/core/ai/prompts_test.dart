@@ -8,6 +8,10 @@ void main() {
 
     expect(prompt, contains('第一行只输出最主要、最常用的词义'));
     expect(prompt, contains('第二行起'));
+    expect(prompt, contains('POS:'));
+    expect(prompt, contains('PRON:'));
+    expect(prompt, contains('词性'));
+    expect(prompt, contains('读音'));
     expect(prompt, contains('完整句子或段落'));
   });
 

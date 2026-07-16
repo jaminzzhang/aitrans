@@ -163,6 +163,62 @@ void main() {
       expect(controller.lastSubmitted, 'translate me');
     });
 
+    testWidgets('enter commits active IME composition without translating', (
+      tester,
+    ) async {
+      final controller = _RecordingTranslateController();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            aiProviderProvider.overrideWith((_) => _NullAIProvider()),
+            translateControllerProvider.overrideWith((_) => controller),
+            auxiliaryControllerProvider.overrideWith(
+              (_) => _NoopAuxiliaryController(),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const Scaffold(body: CommandBar()),
+          ),
+        ),
+      );
+
+      final field = find.byType(TextField);
+      await tester.tap(field);
+      await tester.showKeyboard(field);
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: 'nihao',
+          selection: TextSelection.collapsed(offset: 5),
+          composing: TextRange(start: 0, end: 5),
+        ),
+      );
+      await tester.pump();
+      final callsBeforeEnter = controller.translateNowCalls;
+      final changesBeforeEnter = controller.onTextChangedCalls;
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+
+      expect(controller.translateNowCalls, callsBeforeEnter);
+      expect(controller.onTextChangedCalls, changesBeforeEnter);
+
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: '你好',
+          selection: TextSelection.collapsed(offset: 2),
+        ),
+      );
+      await tester.pump();
+      expect(controller.translateNowCalls, callsBeforeEnter);
+      expect(controller.onTextChangedCalls, changesBeforeEnter);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(controller.translateNowCalls, callsBeforeEnter + 1);
+      expect(controller.lastSubmitted, '你好');
+    });
+
     testWidgets('shows clear button only when there is input', (tester) async {
       await tester.pumpWidget(
         ProviderScope(
