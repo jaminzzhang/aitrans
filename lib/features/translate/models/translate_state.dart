@@ -19,13 +19,15 @@ class TranslateLoading extends TranslateState {
 /// 流式输出中
 class TranslateStreaming extends TranslateState {
   final String text;
-  const TranslateStreaming(this.text);
+  final String sourceText;
+  const TranslateStreaming(this.text, {this.sourceText = ''});
 }
 
 /// 翻译完成
 class TranslateComplete extends TranslateState {
   final String text;
-  const TranslateComplete(this.text);
+  final String sourceText;
+  const TranslateComplete(this.text, {this.sourceText = ''});
 }
 
 /// 翻译出错

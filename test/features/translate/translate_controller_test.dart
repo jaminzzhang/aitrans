@@ -105,6 +105,81 @@ void main() {
     expect(enrichedTexts, ['hello']);
   });
 
+  test(
+    'uses a valid corrected source for enrichment after completion',
+    () async {
+      final provider = _CompletableProvider();
+      final enrichedTexts = <String>[];
+      final controller = TranslateController(
+        provider,
+        null,
+        onTranslationCompleted: enrichedTexts.add,
+      );
+      addTearDown(controller.dispose);
+
+      controller.translateNow('teh cat');
+      provider.emitText('CORRECTION: the cat\n猫');
+      provider.complete();
+      await pumpEventQueue();
+
+      expect(controller.state, isA<TranslateComplete>());
+      final complete = controller.state as TranslateComplete;
+      expect(complete.sourceText, 'teh cat');
+      expect(enrichedTexts, ['the cat']);
+    },
+  );
+
+  test('uses the corrected source from a cached translation', () async {
+    final enrichedTexts = <String>[];
+    final controller = TranslateController(
+      _FakeProvider(),
+      _ImmediateCache('CORRECTION: the cat\n猫'),
+      onTranslationCompleted: enrichedTexts.add,
+    );
+    addTearDown(controller.dispose);
+
+    controller.translateNow('teh cat');
+    await pumpEventQueue();
+
+    expect(controller.state, isA<TranslateComplete>());
+    expect((controller.state as TranslateComplete).sourceText, 'teh cat');
+    expect(enrichedTexts, ['the cat']);
+  });
+
+  test('a cache write failure preserves the completed translation', () async {
+    final provider = _CompletableProvider();
+    final controller = TranslateController(provider, _WriteFailingCache());
+    addTearDown(controller.dispose);
+
+    controller.translateNow('hello');
+    await pumpEventQueue();
+    provider.emitText('你好');
+    provider.complete();
+    await pumpEventQueue();
+
+    expect(controller.state, isA<TranslateComplete>());
+    expect((controller.state as TranslateComplete).text, '你好');
+  });
+
+  test('a response without a translation enters the error state', () async {
+    final provider = _CompletableProvider();
+    final enrichedTexts = <String>[];
+    final controller = TranslateController(
+      provider,
+      null,
+      onTranslationCompleted: enrichedTexts.add,
+    );
+    addTearDown(controller.dispose);
+
+    controller.translateNow('teh cat');
+    provider.emitText('CORRECTION: the cat');
+    provider.complete();
+    await pumpEventQueue();
+
+    expect(controller.state, isA<TranslateError>());
+    expect(enrichedTexts, isEmpty);
+  });
+
   group('AuxiliaryController', () {
     test('a failed enrichment request still clears isLoading', () async {
       final controller = AuxiliaryController(_AllAuxFailingProvider());
@@ -203,6 +278,28 @@ class _DelayedCache implements TranslationCacheStore {
 
   void completeLookupAt(int index, String? value) =>
       _lookups[index].complete(value);
+}
+
+class _ImmediateCache implements TranslationCacheStore {
+  _ImmediateCache(this.value);
+
+  final String? value;
+
+  @override
+  Future<String?> get(String key) async => value;
+
+  @override
+  Future<void> set(String key, String value) async {}
+}
+
+class _WriteFailingCache implements TranslationCacheStore {
+  @override
+  Future<String?> get(String key) async => null;
+
+  @override
+  Future<void> set(String key, String value) async {
+    throw StateError('synthetic cache write failure');
+  }
 }
 
 class _ControlledProvider extends AIProvider {

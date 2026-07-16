@@ -3,6 +3,7 @@ import 'package:aitrans/features/translate/logic/translate_controller.dart';
 import 'package:aitrans/features/translate/models/translate_state.dart';
 import 'package:aitrans/features/translate/ui/result_document.dart';
 import 'package:aitrans/shared/theme/app_theme.dart';
+import 'package:aitrans/shared/widgets/copy_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -128,6 +129,65 @@ void main() {
       expect(find.text('流式中'), findsOneWidget);
       // 流式中不显示复制按钮。
       expect(find.text('复制'), findsNothing);
+    });
+
+    testWidgets('does not expose correction metadata while streaming', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          const TranslateStreaming(
+            'CORRECTION: the cat\n猫',
+            sourceText: 'teh cat',
+          ),
+          const AuxiliaryState(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('CORRECTION:'), findsNothing);
+      expect(find.text('已更正为'), findsOneWidget);
+      expect(find.text('猫'), findsOneWidget);
+      expect(find.text('复制'), findsNothing);
+    });
+
+    testWidgets('shows a correction without exposing response metadata', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          const TranslateComplete(
+            'CORRECTION: the cat\n猫\nPOS: noun',
+            sourceText: 'teh cat',
+          ),
+          const AuxiliaryState(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('已更正为'), findsOneWidget);
+      expect(find.text('the cat'), findsOneWidget);
+      expect(find.text('猫'), findsOneWidget);
+      expect(find.textContaining('CORRECTION:'), findsNothing);
+      expect(
+        tester.widget<CopyButton>(find.byType(CopyButton)).text,
+        '猫\nPOS: noun',
+      );
+    });
+
+    testWidgets('does not show a correction hint when none was returned', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          const TranslateComplete('猫', sourceText: 'cat'),
+          const AuxiliaryState(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('已更正为'), findsNothing);
+      expect(find.text('猫'), findsOneWidget);
     });
 
     testWidgets('renders examples section with header and count', (

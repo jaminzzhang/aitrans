@@ -272,9 +272,17 @@ class TranslateController extends StateNotifier<TranslateState> {
       final cached = await _cache.get(cacheKey);
       if (generation != _requestGeneration) return;
       if (cached != null) {
-        state = TranslateComplete(cached);
+        final presentation = TranslationPresentation.parse(
+          cached,
+          originalSource: text,
+        );
+        if (presentation.primaryMeaning.isEmpty) {
+          state = const TranslateError('翻译服务未返回有效译文');
+          return;
+        }
+        state = TranslateComplete(cached, sourceText: text);
         if (enrichAfterCompletion) {
-          _onTranslationCompleted?.call(text);
+          _onTranslationCompleted?.call(presentation.adoptedSource);
         }
         return;
       }
@@ -294,15 +302,22 @@ class TranslateController extends StateNotifier<TranslateState> {
               if (didComplete) return;
               didComplete = true;
               final finalText = buffer.toString();
-              // 缓存结果
-              _cache?.set(cacheKey, finalText);
-              state = TranslateComplete(finalText);
+              final presentation = TranslationPresentation.parse(
+                finalText,
+                originalSource: text,
+              );
+              if (presentation.primaryMeaning.isEmpty) {
+                state = const TranslateError('翻译服务未返回有效译文');
+                return;
+              }
+              unawaited(_writeCacheSafely(cacheKey, finalText));
+              state = TranslateComplete(finalText, sourceText: text);
               if (enrichAfterCompletion) {
-                _onTranslationCompleted?.call(text);
+                _onTranslationCompleted?.call(presentation.adoptedSource);
               }
             } else {
               buffer.write(result.text);
-              state = TranslateStreaming(buffer.toString());
+              state = TranslateStreaming(buffer.toString(), sourceText: text);
             }
           },
           onError: (e) {
@@ -310,6 +325,14 @@ class TranslateController extends StateNotifier<TranslateState> {
             state = TranslateError(e.toString());
           },
         );
+  }
+
+  Future<void> _writeCacheSafely(String key, String value) async {
+    try {
+      await _cache?.set(key, value);
+    } catch (_) {
+      debugPrint('Translation cache write failed.');
+    }
   }
 
   /// 清空

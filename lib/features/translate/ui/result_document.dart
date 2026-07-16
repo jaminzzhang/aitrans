@@ -169,17 +169,19 @@ class HeroTranslation extends StatelessWidget {
         return const StateView.empty(message: '输入文本开始翻译');
       case TranslateLoading():
         return const StateView.loading();
-      case TranslateStreaming(:final text):
+      case TranslateStreaming(:final text, :final sourceText):
         return _result(
           context,
           text,
+          originalSource: sourceText,
           isStreaming: true,
           fadeKey: const ValueKey('streaming'),
         );
-      case TranslateComplete(:final text):
+      case TranslateComplete(:final text, :final sourceText):
         return _result(
           context,
           text,
+          originalSource: sourceText,
           isStreaming: false,
           fadeKey: const ValueKey('complete'),
         );
@@ -191,12 +193,16 @@ class HeroTranslation extends StatelessWidget {
   Widget _result(
     BuildContext context,
     String text, {
+    required String originalSource,
     required bool isStreaming,
     required Key fadeKey,
   }) {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
-    final presentation = TranslationPresentation.parse(text);
+    final presentation = TranslationPresentation.parse(
+      text,
+      originalSource: originalSource,
+    );
     // 朱砂细下划线：译文下方的精装书扉页式分隔，宽约 36pt，极细。
     return SpringFadeIn(
       fadeKey: fadeKey,
@@ -204,6 +210,23 @@ class HeroTranslation extends StatelessWidget {
         key: fadeKey,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (presentation.correctedSource case final correctedSource?) ...[
+            Text(
+              '已更正为',
+              style: AppTypography.caption(
+                base.labelSmall!,
+              ).copyWith(color: palette.inkSecondary),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            SelectableText(
+              correctedSource,
+              style: base.bodyMedium?.copyWith(
+                color: palette.inkSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
           SelectableText(
             presentation.primaryMeaning,
             style: AppTypography.editorial(
@@ -309,7 +332,7 @@ class HeroTranslation extends StatelessWidget {
             const SizedBox(height: AppSpacing.xl),
             Row(
               children: [
-                CopyButton(text: text),
+                CopyButton(text: presentation.translationText),
                 // 朗读占位：保留可扩展位，未来接入 TTS。
                 _GhostAction(
                   icon: Icons.volume_up_rounded,

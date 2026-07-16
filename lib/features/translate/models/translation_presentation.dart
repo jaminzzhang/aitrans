@@ -1,29 +1,76 @@
 class TranslationPresentation {
-  static const int outputContractVersion = 3;
+  static const int outputContractVersion = 4;
 
+  final String? correctedSource;
+  final String adoptedSource;
+  final String translationText;
   final String primaryMeaning;
   final String? partOfSpeech;
   final String? pronunciation;
   final List<String> secondaryMeanings;
 
   const TranslationPresentation({
+    this.correctedSource,
+    this.adoptedSource = '',
+    this.translationText = '',
     required this.primaryMeaning,
     this.partOfSpeech,
     this.pronunciation,
     required this.secondaryMeanings,
   });
 
-  factory TranslationPresentation.parse(String text) {
-    final lines = text
+  factory TranslationPresentation.parse(
+    String text, {
+    String originalSource = '',
+  }) {
+    final rawLines = text
         .split(RegExp(r'\r?\n'))
         .map((line) => line.trim())
         .where((line) => line.isNotEmpty)
         .toList();
 
-    if (lines.isEmpty) {
-      return const TranslationPresentation(
+    const correctionPrefix = 'CORRECTION:';
+    final hasIncompleteCorrectionPrefix =
+        !text.contains(RegExp(r'[\r\n]')) &&
+        rawLines.length == 1 &&
+        rawLines.first.length < correctionPrefix.length &&
+        correctionPrefix.startsWith(rawLines.first.toUpperCase());
+    if (hasIncompleteCorrectionPrefix) {
+      return TranslationPresentation(
+        adoptedSource: originalSource.trim(),
         primaryMeaning: '',
-        secondaryMeanings: [],
+        secondaryMeanings: const [],
+      );
+    }
+
+    String? correctedSource;
+    var lines = rawLines;
+    if (rawLines.isNotEmpty) {
+      final correctionMatch = RegExp(
+        r'^(?:CORRECTION|更正)\s*[:：]\s*(.*)$',
+        caseSensitive: false,
+      ).firstMatch(rawLines.first);
+      if (correctionMatch != null) {
+        final candidate = _metadataValue(correctionMatch.group(1));
+        if (candidate != null &&
+            originalSource.trim().isNotEmpty &&
+            candidate != originalSource.trim() &&
+            _preservesProtectedTokens(originalSource, candidate)) {
+          correctedSource = candidate;
+        }
+        lines = rawLines.skip(1).toList();
+      }
+    }
+
+    final adoptedSource = correctedSource ?? originalSource.trim();
+
+    if (lines.isEmpty) {
+      return TranslationPresentation(
+        correctedSource: correctedSource,
+        adoptedSource: adoptedSource,
+        translationText: '',
+        primaryMeaning: '',
+        secondaryMeanings: const [],
       );
     }
 
@@ -54,6 +101,9 @@ class TranslationPresentation {
     }
 
     return TranslationPresentation(
+      correctedSource: correctedSource,
+      adoptedSource: adoptedSource,
+      translationText: lines.join('\n'),
       primaryMeaning: lines.first,
       partOfSpeech: partOfSpeech,
       pronunciation: pronunciation,
@@ -72,4 +122,21 @@ class TranslationPresentation {
 
   static String _stripListMarker(String line) =>
       line.replaceFirst(RegExp(r'^(?:[-*•·]\s*|\d+[.)、]\s*)'), '').trim();
+
+  static bool _preservesProtectedTokens(String original, String candidate) {
+    final originalTokens = _protectedTokens(original)..sort();
+    final candidateTokens = _protectedTokens(candidate)..sort();
+    if (originalTokens.length != candidateTokens.length) return false;
+    for (var index = 0; index < originalTokens.length; index++) {
+      if (originalTokens[index] != candidateTokens[index]) return false;
+    }
+    return true;
+  }
+
+  static List<String> _protectedTokens(String text) {
+    final pattern = RegExp(
+      r'https?://[^\s]+|\b\d+(?:[.,]\d+)*\b|\b[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+\b|\b[A-Za-z]+[A-Z][A-Za-z0-9]*\b',
+    );
+    return pattern.allMatches(text).map((match) => match.group(0)!).toList();
+  }
 }
