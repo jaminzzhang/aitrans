@@ -122,14 +122,39 @@ final class ExternalTranslationBridge {
   }
 }
 
+final class MacOSServiceRegistration {
+  typealias ServicesProviderSetter = (NSObject) -> Void
+  typealias DynamicServicesRefresher = () -> Void
+
+  private let setServicesProvider: ServicesProviderSetter
+  private let refreshDynamicServices: DynamicServicesRefresher
+  private var didRegister = false
+
+  init(
+    setServicesProvider: @escaping ServicesProviderSetter = { NSApp.servicesProvider = $0 },
+    refreshDynamicServices: @escaping DynamicServicesRefresher = { NSUpdateDynamicServices() }
+  ) {
+    self.setServicesProvider = setServicesProvider
+    self.refreshDynamicServices = refreshDynamicServices
+  }
+
+  func ensureRegistered(provider: NSObject) {
+    guard !didRegister else { return }
+    setServicesProvider(provider)
+    refreshDynamicServices()
+    didRegister = true
+  }
+}
+
 @main
 class AppDelegate: FlutterAppDelegate {
   private lazy var translationServiceProvider = ExternalTranslationServiceProvider { request in
     ExternalTranslationBridge.shared.receive(request)
   }
+  private let serviceRegistration = MacOSServiceRegistration()
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
-    NSApp.servicesProvider = translationServiceProvider
+    serviceRegistration.ensureRegistered(provider: translationServiceProvider)
   }
 
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

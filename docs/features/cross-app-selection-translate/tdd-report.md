@@ -243,3 +243,92 @@
 | Service 系统缓存 | P2 | [COMMON] macOS 安装/升级后菜单发现受 Services 数据库刷新影响；实机矩阵需覆盖首次启动与升级后场景 |
 | iOS/Android | NONE | [KNOWN] 明确不在本 Scope，未修改其平台入口 |
 | GUI 隐私证据 | P1 | [KNOWN] 一次全屏截图越过隔离边界，已删除且不作为证据；Books 测试材料未导入并已删除 |
+
+---
+
+# S6 Services 稳定安装修复报告
+
+## 1. 建议结论
+
+| 项 | 内容 |
+|---|---|
+| 建议结论 | [KNOWN] `PARTIAL_VERIFICATION` |
+| 最高风险等级 | [KNOWN] P1 |
+| 已完成 | [KNOWN] Debug App 稳定目录安装、LaunchServices 强制注册、系统 Service 启用、legacy/modern 文本类型声明、TextEdit 有效选区菜单验证、单实例启动与存活检查 |
+| 未完成证据 | [KNOWN] Safari、Chrome 和 Books 的选中文本菜单仍需逐宿主现场验证 |
+
+## 2. RED-GREEN 记录
+
+| 轮次 | 阶段 | 真实结果 |
+|---|---|---|
+| S6-1 | RED | [COMPUTED] 当前 build 目录 bundle 可在旧 `pbs` 缓存中出现，但执行 `/System/Library/CoreServices/pbs -update` 后“使用 AITrans 翻译”从 live Services 数据库消失 |
+| S6-1 | GREEN 尝试 | [COMPUTED] 将 bundle 安装到 `~/Applications/AITrans Debug.app`、强制注册并刷新后，live 数据库已保留该稳定路径；首版脚本因 `pbs -dump` 将中文转义为 Unicode 而误判失败 |
+| S6-2 | GREEN | [COMPUTED] 将菜单名契约改由已安装 bundle 的 `Info.plist` 验证，live 数据库只验证稳定 `NSBundlePath`；完整脚本 exit 0，App 单一进程 PID 66789 启动并存活至少 2 秒 |
+| S6-3 | INVALID PROBE | [COMPUTED] 首次 TextEdit 探针使用 `System Events` Command-A，但 `AXSelectedText` 为空；该结果没有形成真实文本选区，不作为 RED 证据 |
+| S6-4 | RED | [COMPUTED] 系统设置中“使用 AITrans 翻译”复选框未选中；用户授权后启用，`NSServicesStatus` 写入 context menu 和 Services menu 启用状态 |
+| S6-5 | RED | [COMPUTED] 通过 TextEdit `Edit → Select All` 建立有效公开文本选区后，旧 bundle 仍未显示 AITrans；同时 `NSPerformService` 返回 `true`，将故障收敛到宿主文本类型匹配 |
+| S6-5 | GREEN | [COMPUTED] Runner XCTest 先以实际只有 `NSStringPboardType`、期望同时包含 `public.utf8-plain-text` 得到 1/8 失败；增加现代文本类型后 8/8 通过 |
+| S6-6 | GREEN | [COMPUTED] 重新安装、注册并重启 TextEdit 后，有效公开文本选区的 Services 菜单从 12 项增至 30 项，明确包含“使用 AITrans 翻译” |
+
+## 3. 修改与验证
+
+| 文件或边界 | 结果 |
+|---|---|
+| `scripts/run_macos_debug.sh` | [KNOWN] 构建后使用 staging bundle 安装到稳定用户 Applications 目录，刷新并校验 Service，再启动 App |
+| `AGENTS.md` | [KNOWN] macOS Debug 流程已改为稳定安装与 Service 注册流程 |
+| `macos/Runner/Info.plist` | [KNOWN] `NSSendTypes` 同时声明 legacy `NSStringPboardType` 和 modern `public.utf8-plain-text` |
+| `macos/RunnerTests/RunnerTests.swift` | [KNOWN] bundle 契约测试保护两种宿主文本类型 |
+| Flutter 业务代码 | [KNOWN] 未修改 |
+| Shell 静态检查 | [COMPUTED] `zsh -n scripts/run_macos_debug.sh` 通过 |
+| Diff 空白检查 | [COMPUTED] `git diff --check` 通过 |
+| 原生测试 | [COMPUTED] 最终 `xcodebuild test` exit 0，Runner XCTest 8/8 通过 |
+| 完整启动检查 | [COMPUTED] `zsh scripts/run_macos_debug.sh` exit 0，输出 `AITrans debug build is running (PID 85396).` |
+
+## 4. 残余风险
+
+| 风险 | 等级 | 状态 |
+|---|---|---|
+| 宿主菜单缓存 | P1 | [COMMON] 已运行宿主可能缓存 Services 菜单；数据库 GREEN 不能替代 Safari、Chrome 和目标 App 的重新启动后现场验证 |
+| 入口形态 | P1 | [KNOWN] 当前 Scope 是系统 Services/右键菜单入口，不是选中文本旁的自定义悬浮按钮 |
+| 系统 Service 启用状态 | NONE | [COMPUTED] 用户已授权并启用；`NSServicesStatus` 明确记录 context menu 与 Services menu 均为 1 |
+| Chrome 现场验证 | P1 | [KNOWN] Chrome 控制连接因运行时冲突不可用；应用菜单未显示文本 Service，但其辅助功能接口不暴露网页选区，Control-click 探针也无法可靠读取，因此不得判定通过或不支持 |
+
+---
+
+# S7 首次启动自动刷新 Services 注册报告
+
+## 1. 建议结论
+
+| 项 | 内容 |
+|---|---|
+| 建议结论 | [KNOWN] `LOCAL_VERIFIED` |
+| 最高风险等级 | [KNOWN] P1 |
+| 已完成 | [KNOWN] App 首次启动安装 Service provider 后，通过公开 `NSUpdateDynamicServices()` API 主动刷新系统 Services 列表；同一进程重复注册幂等 |
+| 边界 | [KNOWN] 系统是否启用 Service 仍由用户设置控制；实现不修改私有 `NSServicesStatus` 偏好 |
+
+## 2. RED-GREEN-REFACTOR 记录
+
+| 轮次 | 阶段 | 真实结果 |
+|---|---|---|
+| S7-0 | 环境隔离 | [COMPUTED] 沙箱内两次 `xcodebuild` 因 Xcode workspace/CoreSimulator 权限环境失败，不作为 RED |
+| S7-1 | RED | [COMPUTED] 沙箱外定向 XCTest 编译失败，错误为 `cannot find 'MacOSServiceRegistration' in scope`，证明启动注册协调器尚不存在 |
+| S7-1 | GREEN | [COMPUTED] 增加幂等注册协调器并接入 `applicationDidFinishLaunching` 后，定向 XCTest exit 0 |
+
+## 3. 修改与验证
+
+| 文件或边界 | 结果 |
+|---|---|
+| `macos/Runner/AppDelegate.swift` | [KNOWN] `MacOSServiceRegistration` 先设置 `NSApp.servicesProvider`，再调用 `NSUpdateDynamicServices()`，每进程只执行一次 |
+| `macos/RunnerTests/RunnerTests.swift` | [KNOWN] 新增 provider 安装、动态刷新和重复调用幂等测试 |
+| 定向原生测试 | [COMPUTED] `xcodebuild test -quiet ... -only-testing:RunnerTests/RunnerTests/testServiceRegistrationInstallsProviderAndRefreshesDynamicServicesOnlyOnce` exit 0 |
+| 完整原生回归 | [COMPUTED] `xcodebuild test -quiet ...` exit 0 |
+| 静态分析 | [COMPUTED] `flutter analyze` exit 0，输出 `No issues found!` |
+| macOS 构建 | [COMPUTED] 沙箱内因 Flutter 全局 SDK cache 无写权限失败；获授权后 `flutter build macos --debug` exit 0 |
+
+## 4. 残余风险
+
+| 风险 | 等级 | 状态 |
+|---|---|---|
+| 首次启动前发现 | P2 | [COMMON] App 尚未运行时不能主动调用刷新 API；安装到 Applications 目录后的发现仍依赖 macOS Launch Services |
+| 用户启用状态 | P1 | [KNOWN] Apple 公开机制不允许 App 保证替用户启用 Service；必要时仍需一次系统设置引导 |
+| 宿主缓存 | P1 | [COMMON] 已运行宿主可能继续缓存 Services 菜单；升级后可能需要重启宿主 App |

@@ -19,9 +19,10 @@
 
 ## macOS Debug 编译启动流程
 
-- [KNOWN] 在项目根目录只使用 `zsh scripts/run_macos_debug.sh` 完成 macOS Debug App 的关闭旧实例、编译、启动和存活检查。
-- [KNOWN] 该脚本会先向已运行的 `com.aitrans.aitrans` 发送正常退出请求，等待进程释放 Hive 文件锁，再执行 `flutter build macos --debug` 和 `open build/macos/Build/Products/Debug/aitrans.app`。
-- [KNOWN] 启动完成标准是 Debug bundle 只有一个进程，且启动后至少持续存活 2 秒；脚本会自动检查并在失败时返回非零状态。
+- [KNOWN] 在项目根目录只使用 `zsh scripts/run_macos_debug.sh` 完成 macOS Debug App 的关闭旧实例、编译、稳定目录安装、Service 注册、启动和存活检查。
+- [KNOWN] 该脚本会先向已运行的 `com.aitrans.aitrans` 发送正常退出请求，等待进程释放 Hive 文件锁，再执行 `flutter build macos --debug`，并将构建产物安装到 `~/Applications/AITrans Debug.app`。
+- [KNOWN] 安装后脚本会强制注册 LaunchServices、刷新 macOS Services 数据库，并确认“使用 AITrans 翻译”仍指向稳定安装路径；注册校验失败时不得启动 App。
+- [KNOWN] 启动完成标准是系统中只有一个 `aitrans` 进程，且启动后至少持续存活 2 秒；脚本会自动检查并在失败时返回非零状态。
 - [KNOWN] 禁止直接执行 `build/macos/Build/Products/Debug/aitrans.app/Contents/MacOS/aitrans`；直接执行会绕过 macOS LaunchServices 的实例复用，重复运行时会争用 Hive `.lock` 文件。
 - [KNOWN] 禁止使用 `open -n` 启动 AITrans，也不得在已运行上述 Debug App 时再执行 `flutter run -d macos`。
 - [KNOWN] `open` 命令返回不代表 App 退出；启动结果以脚本的单进程和存活检查为准。

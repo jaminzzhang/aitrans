@@ -15,7 +15,10 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(services.count, 1)
     XCTAssertEqual(menuItem["default"], "使用 AITrans 翻译")
     XCTAssertEqual(service["NSMessage"] as? String, "translateSelection")
-    XCTAssertEqual(service["NSSendTypes"] as? [String], ["NSStringPboardType"])
+    XCTAssertEqual(
+      service["NSSendTypes"] as? [String],
+      ["NSStringPboardType", "public.utf8-plain-text"]
+    )
   }
 
   func testServiceParserAcceptsExactlyOnePlainTextItem() throws {
@@ -73,6 +76,23 @@ class RunnerTests: XCTestCase {
 
     XCTAssertTrue(requests.isEmpty)
     XCTAssertEqual(message, "AITrans 只能处理单段纯文本。")
+  }
+
+  func testServiceRegistrationInstallsProviderAndRefreshesDynamicServicesOnlyOnce() {
+    var installedProviders: [NSObject] = []
+    var refreshCount = 0
+    let registration = MacOSServiceRegistration(
+      setServicesProvider: { installedProviders.append($0) },
+      refreshDynamicServices: { refreshCount += 1 }
+    )
+    let provider = NSObject()
+
+    registration.ensureRegistered(provider: provider)
+    registration.ensureRegistered(provider: provider)
+
+    XCTAssertEqual(installedProviders.count, 1)
+    XCTAssertTrue(installedProviders.first === provider)
+    XCTAssertEqual(refreshCount, 1)
   }
 
   func testRequestBufferKeepsOnlyLatestRequestBeforeFlutterAttaches() {
