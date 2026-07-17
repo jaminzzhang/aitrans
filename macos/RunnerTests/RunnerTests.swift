@@ -88,6 +88,7 @@ class RunnerTests: XCTestCase {
     let preferences = MenuBarVisibilityPreferences(defaults: defaults)
     var createdItems: [FakeMenuBarStatusItem] = []
     var toggleCount = 0
+    var menuCommands: [MenuBarCommand] = []
     let controller = MenuBarStatusController(
       preferences: preferences,
       makeStatusItem: {
@@ -96,7 +97,10 @@ class RunnerTests: XCTestCase {
         return item
       },
       imageLoader: { nil },
-      onToggleMainWindow: { toggleCount += 1 }
+      onToggleMainWindow: { toggleCount += 1 },
+      onTranslate: { menuCommands.append(.translate) },
+      onOpenSettings: { menuCommands.append(.settings) },
+      onQuit: { menuCommands.append(.quit) }
     )
 
     controller.applyStoredPreference()
@@ -107,8 +111,15 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(createdItems[0].title, "A")
     XCTAssertEqual(createdItems[0].toolTip, "显示或关闭 AITrans")
 
-    createdItems[0].triggerClick()
+    XCTAssertEqual(createdItems[0].menuCommands, MenuBarCommand.allCases)
+
+    createdItems[0].triggerPrimaryClick()
     XCTAssertEqual(toggleCount, 1)
+
+    createdItems[0].triggerMenuCommand(.translate)
+    createdItems[0].triggerMenuCommand(.settings)
+    createdItems[0].triggerMenuCommand(.quit)
+    XCTAssertEqual(menuCommands, [.translate, .settings, .quit])
 
     controller.setVisible(false)
     controller.setVisible(false)
@@ -116,6 +127,85 @@ class RunnerTests: XCTestCase {
     XCTAssertFalse(controller.isVisible)
     XCTAssertTrue(createdItems[0].wasRemoved)
     XCTAssertFalse(preferences.isVisible)
+  }
+
+  func testMenuBarCommandsExposeTheRequiredLocalizedTitlesInOrder() {
+    XCTAssertEqual(MenuBarCommand.allCases, [.translate, .settings, .quit])
+    XCTAssertEqual(MenuBarCommand.allCases.map(\.title), ["翻译", "设置", "退出"])
+  }
+
+  func testMenuBarTranslationTextResolverPrefersSelectionThenFallsBackToClipboard() {
+    var selectedText: String? = " selected text "
+    var clipboardReadCount = 0
+    let resolver = MenuBarTranslationTextResolver(
+      readSelectedText: { selectedText },
+      readClipboardText: {
+        clipboardReadCount += 1
+        return " clipboard text "
+      }
+    )
+
+    XCTAssertEqual(resolver.resolve(), "selected text")
+    XCTAssertEqual(clipboardReadCount, 0)
+
+    selectedText = "  \n"
+    XCTAssertEqual(resolver.resolve(), "clipboard text")
+    XCTAssertEqual(clipboardReadCount, 1)
+  }
+
+  func testMenuBarTranslationCoordinatorAlwaysOpensTranslationAndForwardsResolvedText() {
+    let requestFactory = ExternalTranslationRequestFactory()
+    var openCount = 0
+    var requests: [NativeExternalTranslationRequest] = []
+    var resolvedText: String? = "selected text"
+    let coordinator = MenuBarTranslationCoordinator(
+      resolveText: { resolvedText },
+      requestFactory: requestFactory,
+      openTranslation: { openCount += 1 },
+      onRequest: { requests.append($0) }
+    )
+
+    coordinator.translate()
+    resolvedText = nil
+    coordinator.translate()
+
+    XCTAssertEqual(openCount, 2)
+    XCTAssertEqual(requests, [
+      NativeExternalTranslationRequest(sequence: 1, text: "selected text")
+    ])
+  }
+
+  func testSharedRequestFactoryKeepsServiceAndMenuRequestsMonotonic() {
+    let requestFactory = ExternalTranslationRequestFactory()
+    var requests: [NativeExternalTranslationRequest] = []
+    let service = ExternalTranslationServiceProvider(
+      requestFactory: requestFactory,
+      onRequest: { requests.append($0) }
+    )
+    let menu = MenuBarTranslationCoordinator(
+      resolveText: { "clipboard text" },
+      requestFactory: requestFactory,
+      openTranslation: {},
+      onRequest: { requests.append($0) }
+    )
+
+    service.translateSelection(makePasteboard(text: "selection"), userData: nil, error: nil)
+    menu.translate()
+
+    XCTAssertEqual(requests.map(\.sequence), [1, 2])
+    XCTAssertEqual(requests.map(\.text), ["selection", "clipboard text"])
+  }
+
+  func testApplicationCommandBufferKeepsLatestColdCommandAndDeliversWarmCommands() {
+    let buffer = ApplicationCommandBuffer()
+    var delivered: [ApplicationCommand] = []
+
+    buffer.receive(.showTranslation)
+    buffer.receive(.showSettings)
+    buffer.attach { delivered.append($0) }
+    buffer.receive(.showTranslation)
+
+    XCTAssertEqual(delivered, [.showSettings, .showTranslation])
   }
 
   func testMainWindowPresenterRestoresTheExistingMinimizedWindow() {
@@ -326,33 +416,43 @@ private final class FakeMenuBarStatusItem: MenuBarStatusItem {
   private(set) var title = ""
   private(set) var toolTip: String?
   private(set) var wasRemoved = false
-  private weak var target: AnyObject?
-  private var action: Selector?
+  private var onPrimaryClick: (() -> Void)?
+  private var onMenuCommand: ((MenuBarCommand) -> Void)?
+  private(set) var menuCommands: [MenuBarCommand] = []
 
   func configure(
     image: NSImage?,
     fallbackTitle: String,
     toolTip: String,
-    target: AnyObject,
-    action: Selector
+    onPrimaryClick: @escaping () -> Void,
+    onMenuCommand: @escaping (MenuBarCommand) -> Void
   ) {
     self.image = image
     title = image == nil ? fallbackTitle : ""
     self.toolTip = toolTip
-    self.target = target
-    self.action = action
+    self.onPrimaryClick = onPrimaryClick
+    self.onMenuCommand = onMenuCommand
+    menuCommands = MenuBarCommand.allCases
   }
 
   func remove() {
     wasRemoved = true
   }
 
-  func triggerClick() {
-    guard let target, let action else {
+  func triggerPrimaryClick() {
+    guard let onPrimaryClick else {
       XCTFail("Status item action was not configured.")
       return
     }
-    _ = target.perform(action, with: self)
+    onPrimaryClick()
+  }
+
+  func triggerMenuCommand(_ command: MenuBarCommand) {
+    guard let onMenuCommand else {
+      XCTFail("Status item menu action was not configured.")
+      return
+    }
+    onMenuCommand(command)
   }
 }
 

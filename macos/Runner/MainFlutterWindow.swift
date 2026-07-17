@@ -13,6 +13,9 @@ class MainFlutterWindow: NSWindow {
     ExternalTranslationBridge.shared.attach(
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
+    ApplicationCommandBridge.shared.attach(
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
     MenuBarPreferenceBridge.shared.attach(
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )

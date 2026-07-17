@@ -7,6 +7,9 @@ import 'features/translate/ui/translate_page.dart';
 import 'features/settings/ui/settings_page.dart';
 import 'features/translate/logic/external_translation_coordinator.dart';
 import 'features/translate/logic/translate_controller.dart';
+import 'core/platform/application_command_platform_bridge.dart';
+import 'features/app/logic/application_command_coordinator.dart';
+import 'features/translate/logic/translation_input_focus.dart';
 
 /// 应用根组件。
 class AITransApp extends ConsumerWidget {
@@ -15,6 +18,7 @@ class AITransApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(externalTranslationPlatformBridgeProvider);
+    ref.watch(applicationCommandPlatformBridgeProvider);
     return MaterialApp(
       title: 'AITrans',
       debugShowCheckedModeBanner: false,
@@ -67,6 +71,25 @@ class AppShell extends ConsumerWidget {
         }
       },
     );
+    ref.listen<ApplicationCommandEvent?>(applicationCommandEventProvider, (
+      previous,
+      next,
+    ) {
+      if (next == null) return;
+      _handleApplicationCommand(context, ref, next.command);
+    });
+    ref.listen<ApplicationCommandBridgeStatus>(
+      applicationCommandBridgeStatusProvider,
+      (previous, next) {
+        if (next == ApplicationCommandBridgeStatus.unavailable) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('无法启用状态栏菜单，请重新启动 AITrans。')),
+            );
+        }
+      },
+    );
     return const Scaffold(
       body: Column(
         children: [
@@ -76,6 +99,25 @@ class AppShell extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  void _handleApplicationCommand(
+    BuildContext context,
+    WidgetRef ref,
+    ApplicationCommand command,
+  ) {
+    Navigator.of(
+      context,
+      rootNavigator: true,
+    ).popUntil((route) => route.isFirst);
+    switch (command) {
+      case ApplicationCommand.showTranslation:
+        ref.read(translationInputFocusRequestProvider.notifier).state++;
+      case ApplicationCommand.showSettings:
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) showAITransSettingsDialog(context);
+        });
+    }
   }
 }
 
@@ -329,19 +371,19 @@ class _SettingsIconButton extends StatelessWidget {
           size: 20,
           color: palette.inkTertiary,
         ),
-        onPressed: () => _openSettings(context),
+        onPressed: () => showAITransSettingsDialog(context),
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
       ),
     );
   }
+}
 
-  void _openSettings(BuildContext context) {
-    // 带 scrim 变暗的居中浮层。
-    showDialog<void>(
-      context: context,
-      barrierColor: AppColors.of(Theme.of(context).brightness).scrim,
-      builder: (_) => const SettingsSheet(),
-    );
-  }
+void showAITransSettingsDialog(BuildContext context) {
+  // 带 scrim 变暗的居中浮层。
+  showDialog<void>(
+    context: context,
+    barrierColor: AppColors.of(Theme.of(context).brightness).scrim,
+    builder: (_) => const SettingsSheet(),
+  );
 }

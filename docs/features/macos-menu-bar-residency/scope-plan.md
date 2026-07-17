@@ -8,7 +8,7 @@
 |---|---|
 | 建议结论 | [COMPUTED] `TDD_INPUT_READY` |
 | 最高风险等级 | [COMPUTED] P1 |
-| 一句话依据 | [KNOWN] 用户已确认 Feature ID、macOS 范围、首次启动、关闭驻留、状态栏点击、Dock 保留、状态栏偏好和原生 AppKit 路线；窗口与状态项主干、异常分支和验证入口均已定位 |
+| 一句话依据 | [KNOWN] 用户已确认 Feature ID、macOS 范围、左键窗口 toggle、右键三项菜单、选区优先/剪贴板回退、辅助功能权限、Dock 保留、状态栏偏好和原生 AppKit 路线；主干、异常分支和验证入口均已定位 |
 | 下一步建议 | [KNOWN] 进入 `SDD-HICODE-tdd`，按 S1 至 S4 执行 |
 | 本轮问题状态 | [KNOWN] 无阻断问题 |
 | 置信度 | [INFERRED] HIGH（90%）；真实状态栏视觉和完整生命周期仍需 macOS 宿主验证 |
@@ -45,7 +45,7 @@
 | [KNOWN] 业务规则与异常路径 | [KNOWN] 已明确 | [KNOWN] 默认开启、关闭窗口不退出、状态栏点击 show/close toggle、显式退出、重复操作幂等、bridge 失败回退 |
 | [KNOWN] 关键术语冲突 | [KNOWN] 无已知冲突 | [KNOWN] “常驻”定义为应用持有状态项且关闭窗口后进程存活，不承诺系统永远为图标分配可见空间 |
 | [KNOWN] 金融核心风险 | [KNOWN] 不涉及核心业务、金额或交易 | [KNOWN] 仅状态流转和幂等达到 P1 |
-| [KNOWN] 权限、隐私与审计 | [KNOWN] 无新增权限或文本数据 | [KNOWN] channel 只传布尔状态；不记录用户文本、凭证或异常原文 |
+| [KNOWN] 权限、隐私与审计 | [KNOWN] 新增按需 Accessibility 权限和外部文本输入 | [KNOWN] 用户显式选择“翻译”才请求权限；选区为空/拒绝时回退剪贴板；文本进入既有校验和翻译流程，不记录文本、凭证或异常原文 |
 | [KNOWN] 影响范围 | [KNOWN] 已定位到类、文件、资源、测试和调试脚本 | [KNOWN] 原生 Runner、platform bridge、设置 UI、XCTest 与 Flutter tests |
 | [KNOWN] 设计树输入 | [KNOWN] 已闭合 | [KNOWN] 主干和 P1 分支均有处理、验证点和停止条件 |
 
@@ -55,8 +55,8 @@
 |---|---|
 | 需求目标 | [KNOWN] macOS 用户关闭 AITrans 主窗口后仍能通过状态栏、Dock、全局快捷键或现有 Service 恢复唯一主窗口；状态栏再次点击可关闭已显示主窗口 |
 | 范围内 | [KNOWN] 原生状态项、关闭不退出、窗口 presenter、Dock reopen、默认开启的独立状态栏偏好、macOS 设置开关、template icon、回归测试 |
-| 范围外 | [KNOWN] iOS/Android 常驻、`LSUIElement`、隐藏 Dock、登录启动、状态栏菜单/弹窗、多窗口、Provider/缓存/凭证变更 |
-| 非目标 | [KNOWN] 不保证 macOS 在菜单栏空间不足时实际展示图标；不把窗口关闭改成应用退出；不新增高权限后台能力 |
+| 范围外 | [KNOWN] iOS/Android 常驻、`LSUIElement`、隐藏 Dock、登录启动、状态栏 popover/历史/第二套 UI、多窗口、Provider/缓存/凭证 schema 变更 |
+| 非目标 | [KNOWN] 不保证 macOS 在菜单栏空间不足时实际展示图标；不把窗口关闭改成应用退出；不后台持续读取选区或剪贴板 |
 | 验收标准 | [KNOWN] 首次启动显示主窗口和一个状态项；关闭窗口后进程存活；状态项点击按 hidden/closed/minimized→visible/key、visible→closed 切换同一窗口；偏好即时生效且重启恢复；关闭偏好后 Dock/快捷键仍可恢复；显式 Quit 真退出；现有 Service 与调试脚本通过 |
 | feature_context 更新 | [KNOWN] 已创建并收敛到 `TDD_INPUT_READY` |
 | ADR 处理 | [INFERRED] 不需要；方案可局部替换和回滚，不改变跨平台公共协议或权限模型 |
@@ -68,10 +68,11 @@
 | ROOT | 业务目标 | [KNOWN] AITrans 运行于 macOS | [INFERRED] 建立状态栏入口、进程驻留与单窗口恢复闭环 | [KNOWN] 关闭窗口不丢失快速入口，显式退出不被阻断 | [KNOWN] 仅 macOS 标准前台 App | [KNOWN] 端到端生命周期矩阵 | P1 |
 | MAIN-1 | 启动注册 | [KNOWN] 原生启动完成且 `menuBarItemVisible` 无值或为 true | [INFERRED] controller 幂等创建一个强引用 `NSStatusItem`，加载 bundled template icon 并注册 click action | [KNOWN] 系统可展示一个 AITrans 状态项 | [KNOWN] 系统空间不足不视为应用可控制的失败 | [KNOWN] default/enable/repeat/image/accessibility XCTest | P1 |
 | MAIN-2 | 关闭驻留 | [KNOWN] 用户关闭最后主窗口 | [INFERRED] `applicationShouldTerminateAfterLastWindowClosed` 返回 false；复用 Nib 的 `releasedWhenClosed=NO` | [KNOWN] 窗口从屏幕移除但对象和进程保留 | [KNOWN] 不把 Quit 事件改成 hide | [KNOWN] delegate 与窗口 identity tests、进程检查 | P1 |
-| MAIN-3 | 点击切换 | [KNOWN] 状态栏 action 到达，窗口可能 closed/hidden/minimized/visible/key/non-key | [KNOWN] visible、key 且非 minimized 时关闭；closed/hidden/minimized/non-key 时由统一 presenter 解最小化、激活 App、显示并聚焦现有窗口 | [KNOWN] 唯一窗口在 closed 与 visible/key 之间切换，状态内容保持 | [KNOWN] 不创建窗口、不自动提交翻译；不能只信任 Flutter window 的陈旧 `isVisible` | [KNOWN] visible/key→closed→visible、stale-visible/non-key tests 与窗口 count | P1 |
+| MAIN-3 | 左键切换 | [KNOWN] 状态栏 leftMouseUp 到达，窗口可能 closed/hidden/minimized/visible/key/non-key | [KNOWN] visible、key 且非 minimized 时关闭；closed/hidden/minimized/non-key 时由统一 presenter 解最小化、激活 App、显示并聚焦现有窗口 | [KNOWN] 唯一窗口在 closed 与 visible/key 之间切换，状态内容保持 | [KNOWN] 不创建窗口、不自动提交翻译；不能只信任 Flutter window 的陈旧 `isVisible` | [KNOWN] visible/key→closed→visible、stale-visible/non-key tests 与窗口 count | P1 |
 | MAIN-4 | Dock/快捷键/Service | [KNOWN] Dock reopen、快捷键或外部翻译请求到达 | [KNOWN] Dock 与原生 Service 继续 always-show；Dart 快捷键保持既有 toggle；状态栏单独使用 presenter 的 show/close toggle | [KNOWN] 各入口保持用户确认的独立语义，外部翻译仍只处理一次 | [KNOWN] 状态栏 toggle 不得改变 Dock/Service 的 always-show | [KNOWN] reopen/service/hotkey regression tests | P1 |
 | MAIN-5 | 偏好切换 | [KNOWN] 用户在 macOS 设置页切换状态栏可见性 | [INFERRED] typed bridge 调用原生 controller；成功后写独立 `UserDefaults`，UI 反映真实值 | [KNOWN] enable 创建一个 item，disable 移除 item，重启恢复 | [KNOWN] 不写 Provider/credential Hive state；移动端不展示 | [KNOWN] native persistence、channel 与 widget tests | P1 |
-| MAIN-6 | 显式退出 | [KNOWN] AppKit 收到 `terminate:` 或 quit AppleEvent | [KNOWN] 保持标准终止流程 | [KNOWN] 进程和状态项结束，Hive lock 释放 | [KNOWN] 不新增“退出”状态栏菜单 | [KNOWN] XIB inspection 与 debug script 重启 | P1 |
+| MAIN-6 | 显式退出 | [KNOWN] AppKit 收到 `terminate:`、quit AppleEvent 或右键菜单“退出” | [KNOWN] 保持标准终止流程，右键菜单直接调用 AppKit terminate | [KNOWN] 进程和状态项结束，Hive lock 释放 | [KNOWN] 不经 Flutter bridge | [KNOWN] controller XCTest、真实菜单点击与 debug script 重启 | P1 |
+| MAIN-7 | 右键菜单与翻译输入 | [KNOWN] rightMouseUp 后用户选择“翻译、设置、退出”之一 | [KNOWN] 翻译按需请求 Accessibility，选区优先、剪贴板回退并复用既有外部翻译；设置经 typed app command 打开现有 SettingsSheet；退出原生终止 | [KNOWN] 仅对应动作发生 | [KNOWN] 不持续监听、不记录文本、不创建第二套 UI；无文本不发 AI 请求 | [KNOWN] Runner resolver/coordinator/menu tests、Dart bridge/widget tests、宿主菜单/设置/退出 | P1 |
 | BRANCH-1 | 重复事件 | [KNOWN] 重复启动回调、重复 enable/disable 或快速点击 | [INFERRED] 所有操作按目标状态幂等，UI action 在主线程串行 | [KNOWN] 至多一个 item 和一个主窗口 | [KNOWN] 不跨进程共享原生对象 | [KNOWN] factory count、remove count、window identity | P1 |
 | BRANCH-2 | 图标或空间异常 | [KNOWN] template image 为 nil，或系统不展示状态项 | [INFERRED] image nil 时用短文本和 accessibility label 回退；保留 Dock 与快捷键 | [KNOWN] 应用可操作且不崩溃 | [KNOWN] 不声称突破系统菜单栏空间限制 | [KNOWN] failure injection 与手工视觉检查 | P2 |
 | BRANCH-3 | channel/偏好失败 | [KNOWN] channel 未附着、方法未知或偏好写入未完成 | [INFERRED] 返回 typed failure；设置开关回退并显示通用错误 | [KNOWN] 不产生 UI/原生状态漂移 | [KNOWN] 不输出本地路径或原始异常 | [KNOWN] fake channel/store failure tests | P1 |
@@ -139,9 +140,10 @@
 | 任务 | 目标与设计树节点 | 输入 | 范围内 / 范围外 | 涉及对象 | TDD 起点与测试重点 | 验证方式 | 停止条件 |
 |---|---|---|---|---|---|---|---|
 | S1 原生状态项、偏好与窗口 presenter | [KNOWN] 建立可注入、幂等的纯原生边界；MAIN-1、MAIN-3、MAIN-5、BRANCH-1/2 | [KNOWN] 用户确认、AppKit 契约、macOS 10.15 baseline | [KNOWN] 内：默认 true 的独立偏好、create/remove、强引用、template icon/短文本回退、closed/hidden/minimized 恢复和 visible 关闭；外：Flutter UI、AppDelegate wiring、菜单 | [INFERRED] `AppDelegate.swift` 或独立 Swift 类型、`Assets.xcassets/`, `RunnerTests.swift` | [KNOWN] 先写默认值、显式 false、重复 enable/disable、nil icon、click callback、visible→closed→visible 和单 window identity RED tests | [KNOWN] Runner XCTest focused scheme | [KNOWN] 若必须移除 Dock、提高 deployment target、增加托盘依赖或创建第二窗口，则返回 Scope |
-| S2 AppDelegate 生命周期与既有入口整合 | [KNOWN] 关闭窗口后驻留，并让 status click、Dock reopen 和 Service 使用单窗口 presenter；MAIN-2/3/4/6、BRANCH-1 | [KNOWN] S1 seam；当前 Service bridge、Nib `releasedWhenClosed=NO`、Quit wiring 和 debug script | [KNOWN] 内：启动注册、最后窗口不退出、Dock reopen、Service presenter、标准 terminate 回归；外：改变 hotkey toggle、状态栏菜单 | [INFERRED] `AppDelegate.swift`, `MainFlutterWindow.swift`, `MainMenu.xib` inspection, `RunnerTests.swift` | [KNOWN] 先写 delegate false、reopen、Service 单窗口、重复注册和 terminate 不被转换为 hide tests | [KNOWN] Runner XCTest + macOS debug build | [KNOWN] AppleEvent quit 不能终止、Service 重复交付或 window identity 无法保持时停止并返回 Scope |
+| S2 AppDelegate 生命周期与既有入口整合 | [KNOWN] 关闭窗口后驻留，并让 status click、Dock reopen 和 Service 使用单窗口 presenter；MAIN-2/3/4/6、BRANCH-1 | [KNOWN] S1 seam；当前 Service bridge、Nib `releasedWhenClosed=NO`、Quit wiring 和 debug script | [KNOWN] 内：启动注册、最后窗口不退出、Dock reopen、Service presenter、标准 terminate 回归；外：改变 hotkey toggle、右键菜单具体命令（由 S5 承担） | [INFERRED] `AppDelegate.swift`, `MainFlutterWindow.swift`, `MainMenu.xib` inspection, `RunnerTests.swift` | [KNOWN] 先写 delegate false、reopen、Service 单窗口、重复注册和 terminate 不被转换为 hide tests | [KNOWN] Runner XCTest + macOS debug build | [KNOWN] AppleEvent quit 不能终止、Service 重复交付或 window identity 无法保持时停止并返回 Scope |
 | S3 Flutter bridge 与 macOS 设置开关 | [KNOWN] 让用户即时读取和设置状态栏可见性，失败不制造假状态；MAIN-5、BRANCH-3/4 | [KNOWN] S1 controller；现有 Flutter messenger 与 SettingsSheet 异步模式 | [KNOWN] 内：typed get/set、macOS platform guard、loading、防重入、失败回退/通用错误；外：Provider save transaction、移动端 UI、凭证 schema | [INFERRED] `MainFlutterWindow.swift`, `lib/core/platform/`, `settings_page.dart`, platform/widget tests | [KNOWN] 先写 get true/false、set、unknown method、channel failure、macOS-only rendering、toggle success/failure rollback RED tests | [KNOWN] focused Flutter tests + Runner XCTest + `flutter analyze` | [KNOWN] 若必须把偏好写入 encrypted Provider state、向移动端暴露无效开关或泄露原生异常，则返回 Scope |
 | S4 全量回归与 macOS 宿主验证 | [KNOWN] 验证完整常驻闭环且不破坏既有功能；ROOT、所有 MAIN/BRANCH | [KNOWN] S1-S3 完成；项目调试启动规则 | [KNOWN] 内：format/analyze/test、Runner XCTest、debug build/install/start、关闭后存活、status/Dock/hotkey/Service、Cmd+Q/AppleEvent quit、重启偏好；外：发布签名、登录启动、移动真机常驻 | [KNOWN] `lib/`, `test/`, `macos/`, `scripts/run_macos_debug.sh`, TDD report | [KNOWN] 自动化先行，再用非敏感固定文本手工验证可见状态、关闭、恢复、显式退出和单进程 | [KNOWN] `dart format --output=none --set-exit-if-changed lib test`; `flutter analyze`; `flutter test`; Runner XCTest；`zsh scripts/run_macos_debug.sh` | [KNOWN] 出现多进程、Hive 锁争用、Quit 失效、Service 注册丢失、状态项重复或主窗口无法恢复时停止，不得宣称本地验证通过 |
+| S5 右键命令、Accessibility 与 Flutter 导航 | [KNOWN] 实现 MAIN-7、MAIN-8、BRANCH-5 | [KNOWN] 用户 2026-07-17 确认；Apple Accessibility/App Sandbox 边界；既有 ExternalTranslationBridge | [KNOWN] 内：rightMouseUp 菜单、选区优先/剪贴板回退、共享 sequence、showTranslation/showSettings typed command、原生 terminate、移除 macOS Sandbox entitlement；外：持续监听、模拟 Cmd+C、第二套 UI、真实用户剪贴板宿主测试 | [KNOWN] `AppDelegate.swift`, entitlements, `MainFlutterWindow.swift`, `lib/core/platform/`, `lib/features/app/`, AppShell/CommandBar, Runner/Flutter tests | [KNOWN] 先写 menu/resolver/coordinator/sequence/buffer RED，再写 Dart bridge/navigation/focus RED | [KNOWN] Runner XCTest、聚焦 Flutter tests、全量回归、codesign entitlement、仅 AITrans AX 宿主菜单 | [KNOWN] 若用户不同意关闭 Sandbox、退出依赖 Flutter、文本被记录或无文本仍发 AI 请求，则停止并返回 Scope |
 
 ## 11. TDD 输入与测试重点
 
@@ -154,14 +156,15 @@
 | MAIN-5/BRANCH-3 | [KNOWN] bridge get/set、快速重复点击、native failure、UI rollback、重启恢复 | unit/widget/persistence | P1 | [KNOWN] fake channel/store，无密钥或用户文本 | S3/S4 |
 | BRANCH-2 | [KNOWN] icon 存在、nil image 回退、tooltip/accessibility、系统空间限制说明 | resource/accessibility | P2 | [KNOWN] bundled template asset 与 fake image loader | S1/S4 |
 | BRANCH-4 | [KNOWN] iOS/Android 不显示开关且不调用 macOS channel | platform guard | P2 | [KNOWN] fake platform capability | S3 |
+| MAIN-7/MAIN-8/BRANCH-5 | [KNOWN] 右键三项、选区/剪贴板优先级、拒绝权限、无文本、应用命令导航、原生退出 | unit/widget/host | P1 | [KNOWN] 合成文本和 fake readers；宿主不读取真实剪贴板 | S5 |
 
 ## 12. ADR 判断
 
 | 项 | 内容 |
 |---|---|
-| 是否需要 ADR | [INFERRED] 否 |
-| 判断理由 | [INFERRED] 原生 `NSStatusItem`、`UserDefaults` 和 window presenter 都封装在 macOS 平台边界，可单独替换或回滚；没有新增权限、公共 SDK、数据格式或难逆跨模块契约 |
-| 涉及决策点 | [KNOWN] 用户已确认原生 AppKit、保留 Dock 和可隐藏状态项；若未来改成 `LSUIElement`、登录启动或状态栏第二套 UI，必须重新进行 Scope/ADR 判断 |
+| 是否需要 ADR | [INFERRED] 是；正式文件待负责人确认 |
+| 判断理由 | [INFERRED] 状态栏代码仍可局部替换，但为跨应用 Accessibility 移除 App Sandbox 会改变发行与安全边界，达到 ADR 候选门槛 |
+| 涉及决策点 | [KNOWN] 用户已确认请求辅助功能权限；正式 ADR 和 Mac App Store/站外发行选择仍需项目负责人确认并写入长期上下文 |
 
 ## 13. 知识沉淀与上下文更新
 
@@ -169,14 +172,14 @@
 |---|---|---|---|---|
 | `docs/DOMAIN_KNOWLEDGE.md` | [KNOWN] 建议更新 | [INFERRED] 增加“macOS 菜单栏驻留”“显式退出”“主窗口恢复”术语和 MBR-001 至 MBR-006 | [KNOWN] 负责人未指派，按项目规则暂不正式写入长期上下文 | [KNOWN] 待负责人确认 |
 | `docs/PROJ_CONTEXT.md` | [KNOWN] 建议更新 | [INFERRED] Feature 索引候选 `macos-menu-bar-residency`，Scope 状态 `TDD_INPUT_READY`；平台模块增加状态栏/窗口 presenter 计划 | [KNOWN] 负责人未指派，按项目规则暂不正式更新 | [KNOWN] 待负责人确认 |
-| `docs/adr/` | [KNOWN] 跳过 | [INFERRED] 当前方案不满足难逆、无上下文会意外和真实长期取舍三个条件的组合 | [KNOWN] 若转 agent app、登录启动或第二套 UI 再建立 ADR 草稿 | [KNOWN] 当前不需要 |
+| `docs/adr/` | [KNOWN] 建议新增 | [INFERRED] 记录“为状态栏选区读取关闭 macOS App Sandbox”的安全与发行取舍 | [KNOWN] 本轮用户授权实现，但负责人身份未确认，按项目规则仅记录建议、不创建正式 ADR | [KNOWN] 待负责人确认 |
 
 ## 14. 文档处理清单
 
 | 文档 | 处理结果 |
 |---|---|
 | `docs/features/macos-menu-bar-residency/feature_context.md` | [KNOWN] 已创建；记录确认范围、规则、设计树、影响面和非阻断缺口 |
-| `docs/features/macos-menu-bar-residency/scope-plan.md` | [KNOWN] 已创建；结论为 `TDD_INPUT_READY`，包含 S1-S4 最终任务 |
+| `docs/features/macos-menu-bar-residency/scope-plan.md` | [KNOWN] 已创建；结论为 `TDD_INPUT_READY`，包含 S1-S5 最终任务 |
 | `docs/DOMAIN_KNOWLEDGE.md` | [KNOWN] 未更新；等待负责人确认长期术语和规则 |
 | `docs/PROJ_CONTEXT.md` | [KNOWN] 未更新；等待负责人确认 Feature 索引 |
 | `docs/adr/` | [KNOWN] 未创建 ADR |

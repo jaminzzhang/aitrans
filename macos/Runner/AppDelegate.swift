@@ -1,4 +1,5 @@
 import Cocoa
+import ApplicationServices
 import FlutterMacOS
 
 final class MenuBarVisibilityPreferences {
@@ -18,13 +19,30 @@ final class MenuBarVisibilityPreferences {
   }
 }
 
+enum MenuBarCommand: Int, CaseIterable {
+  case translate
+  case settings
+  case quit
+
+  var title: String {
+    switch self {
+    case .translate:
+      return "翻译"
+    case .settings:
+      return "设置"
+    case .quit:
+      return "退出"
+    }
+  }
+}
+
 protocol MenuBarStatusItem: AnyObject {
   func configure(
     image: NSImage?,
     fallbackTitle: String,
     toolTip: String,
-    target: AnyObject,
-    action: Selector
+    onPrimaryClick: @escaping () -> Void,
+    onMenuCommand: @escaping (MenuBarCommand) -> Void
   )
   func remove()
 }
@@ -32,6 +50,9 @@ protocol MenuBarStatusItem: AnyObject {
 final class AppKitMenuBarStatusItem: MenuBarStatusItem {
   private let statusBar: NSStatusBar
   private let statusItem: NSStatusItem
+  private let menu = NSMenu()
+  private var onPrimaryClick: (() -> Void)?
+  private var onMenuCommand: ((MenuBarCommand) -> Void)?
 
   init(statusBar: NSStatusBar = .system) {
     self.statusBar = statusBar
@@ -42,20 +63,53 @@ final class AppKitMenuBarStatusItem: MenuBarStatusItem {
     image: NSImage?,
     fallbackTitle: String,
     toolTip: String,
-    target: AnyObject,
-    action: Selector
+    onPrimaryClick: @escaping () -> Void,
+    onMenuCommand: @escaping (MenuBarCommand) -> Void
   ) {
     guard let button = statusItem.button else { return }
     button.image = image
     button.title = image == nil ? fallbackTitle : ""
     button.toolTip = toolTip
     button.setAccessibilityLabel("AITrans")
-    button.target = target
-    button.action = action
+    self.onPrimaryClick = onPrimaryClick
+    self.onMenuCommand = onMenuCommand
+    configureMenu()
+    button.target = self
+    button.action = #selector(handleStatusItemClick(_:))
+    button.sendAction(on: [.leftMouseUp, .rightMouseUp])
   }
 
   func remove() {
     statusBar.removeStatusItem(statusItem)
+  }
+
+  private func configureMenu() {
+    menu.removeAllItems()
+    for command in MenuBarCommand.allCases {
+      let item = NSMenuItem(
+        title: command.title,
+        action: #selector(handleMenuCommand(_:)),
+        keyEquivalent: ""
+      )
+      item.target = self
+      item.tag = command.rawValue
+      menu.addItem(item)
+    }
+  }
+
+  @objc private func handleStatusItemClick(_ sender: Any?) {
+    if NSApp.currentEvent?.type == .rightMouseUp {
+      statusItem.menu = menu
+      statusItem.button?.performClick(nil)
+      statusItem.menu = nil
+      return
+    }
+    onPrimaryClick?()
+  }
+
+  @objc private func handleMenuCommand(_ sender: NSMenuItem) {
+    guard let command = MenuBarCommand(rawValue: sender.tag) else { return }
+    onMenuCommand?(command)
   }
 }
 
@@ -64,25 +118,37 @@ final class MenuBarStatusController: NSObject {
     preferences: MenuBarVisibilityPreferences(),
     makeStatusItem: { AppKitMenuBarStatusItem() },
     imageLoader: { NSImage(named: NSImage.Name("MenuBarIcon")) },
-    onToggleMainWindow: { MainWindowPresenter.shared.toggleMainWindow() }
+    onToggleMainWindow: { MainWindowPresenter.shared.toggleMainWindow() },
+    onTranslate: { MenuBarTranslationCoordinator.shared.translate() },
+    onOpenSettings: { ApplicationCommandBridge.shared.send(.showSettings) },
+    onQuit: { NSApp.terminate(nil) }
   )
 
   private let preferences: MenuBarVisibilityPreferences
   private let makeStatusItem: () -> MenuBarStatusItem
   private let imageLoader: () -> NSImage?
   private let onToggleMainWindow: () -> Void
+  private let onTranslate: () -> Void
+  private let onOpenSettings: () -> Void
+  private let onQuit: () -> Void
   private var statusItem: MenuBarStatusItem?
 
   init(
     preferences: MenuBarVisibilityPreferences,
     makeStatusItem: @escaping () -> MenuBarStatusItem,
     imageLoader: @escaping () -> NSImage?,
-    onToggleMainWindow: @escaping () -> Void
+    onToggleMainWindow: @escaping () -> Void,
+    onTranslate: @escaping () -> Void,
+    onOpenSettings: @escaping () -> Void,
+    onQuit: @escaping () -> Void
   ) {
     self.preferences = preferences
     self.makeStatusItem = makeStatusItem
     self.imageLoader = imageLoader
     self.onToggleMainWindow = onToggleMainWindow
+    self.onTranslate = onTranslate
+    self.onOpenSettings = onOpenSettings
+    self.onQuit = onQuit
   }
 
   var isVisible: Bool { statusItem != nil }
@@ -104,8 +170,8 @@ final class MenuBarStatusController: NSObject {
         image: image,
         fallbackTitle: "A",
         toolTip: "显示或关闭 AITrans",
-        target: self,
-        action: #selector(handleStatusItemClick(_:))
+        onPrimaryClick: onToggleMainWindow,
+        onMenuCommand: handleMenuCommand
       )
       statusItem = newItem
     } else {
@@ -115,8 +181,178 @@ final class MenuBarStatusController: NSObject {
     preferences.isVisible = visible
   }
 
-  @objc private func handleStatusItemClick(_ sender: Any?) {
-    onToggleMainWindow()
+  private func handleMenuCommand(_ command: MenuBarCommand) {
+    switch command {
+    case .translate:
+      onTranslate()
+    case .settings:
+      onOpenSettings()
+    case .quit:
+      onQuit()
+    }
+  }
+}
+
+final class AccessibilitySelectedTextReader {
+  func readSelectedText(promptIfNeeded: Bool) -> String? {
+    let options = [
+      kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: promptIfNeeded
+    ] as CFDictionary
+    guard AXIsProcessTrustedWithOptions(options) else { return nil }
+
+    let systemWideElement = AXUIElementCreateSystemWide()
+    var focusedValue: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(
+      systemWideElement,
+      kAXFocusedUIElementAttribute as CFString,
+      &focusedValue
+    ) == .success,
+      let focusedValue,
+      CFGetTypeID(focusedValue) == AXUIElementGetTypeID()
+    else {
+      return nil
+    }
+
+    let focusedElement = unsafeBitCast(focusedValue, to: AXUIElement.self)
+    var selectedValue: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(
+      focusedElement,
+      kAXSelectedTextAttribute as CFString,
+      &selectedValue
+    ) == .success else {
+      return nil
+    }
+    return selectedValue as? String
+  }
+}
+
+final class MenuBarTranslationTextResolver {
+  private let readSelectedText: () -> String?
+  private let readClipboardText: () -> String?
+
+  init(
+    readSelectedText: @escaping () -> String?,
+    readClipboardText: @escaping () -> String?
+  ) {
+    self.readSelectedText = readSelectedText
+    self.readClipboardText = readClipboardText
+  }
+
+  func resolve() -> String? {
+    normalized(readSelectedText()) ?? normalized(readClipboardText())
+  }
+
+  private func normalized(_ text: String?) -> String? {
+    guard let text else { return nil }
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+  }
+}
+
+final class MenuBarTranslationCoordinator {
+  static let shared: MenuBarTranslationCoordinator = {
+    let selectedTextReader = AccessibilitySelectedTextReader()
+    let resolver = MenuBarTranslationTextResolver(
+      readSelectedText: {
+        selectedTextReader.readSelectedText(promptIfNeeded: true)
+      },
+      readClipboardText: {
+        NSPasteboard.general.string(forType: .string)
+      }
+    )
+    return MenuBarTranslationCoordinator(
+      resolveText: resolver.resolve,
+      requestFactory: .shared,
+      openTranslation: {
+        ApplicationCommandBridge.shared.send(.showTranslation)
+      },
+      onRequest: ExternalTranslationBridge.shared.receive
+    )
+  }()
+
+  private let resolveText: () -> String?
+  private let requestFactory: ExternalTranslationRequestFactory
+  private let openTranslation: () -> Void
+  private let onRequest: (NativeExternalTranslationRequest) -> Void
+
+  init(
+    resolveText: @escaping () -> String?,
+    requestFactory: ExternalTranslationRequestFactory,
+    openTranslation: @escaping () -> Void,
+    onRequest: @escaping (NativeExternalTranslationRequest) -> Void
+  ) {
+    self.resolveText = resolveText
+    self.requestFactory = requestFactory
+    self.openTranslation = openTranslation
+    self.onRequest = onRequest
+  }
+
+  func translate() {
+    openTranslation()
+    guard let text = resolveText() else { return }
+    onRequest(requestFactory.makeRequest(text: text))
+  }
+}
+
+enum ApplicationCommand: String, Equatable {
+  case showTranslation
+  case showSettings
+}
+
+final class ApplicationCommandBuffer {
+  typealias Sender = (ApplicationCommand) -> Void
+
+  private var sender: Sender?
+  private(set) var pendingCommand: ApplicationCommand?
+
+  func receive(_ command: ApplicationCommand) {
+    guard let sender else {
+      pendingCommand = command
+      return
+    }
+    sender(command)
+  }
+
+  func attach(sender: @escaping Sender) {
+    self.sender = sender
+    guard let pendingCommand else { return }
+    self.pendingCommand = nil
+    sender(pendingCommand)
+  }
+}
+
+final class ApplicationCommandBridge {
+  static let shared = ApplicationCommandBridge()
+
+  private let buffer = ApplicationCommandBuffer()
+  private var channel: FlutterMethodChannel?
+
+  func send(_ command: ApplicationCommand) {
+    DispatchQueue.main.async {
+      _ = MainWindowPresenter.shared.showMainWindow()
+      self.buffer.receive(command)
+    }
+  }
+
+  func attach(binaryMessenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "com.aitrans/application_commands",
+      binaryMessenger: binaryMessenger
+    )
+    self.channel = channel
+    channel.setMethodCallHandler { [weak self, weak channel] call, result in
+      guard call.method == "ready" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      self?.buffer.attach { [weak channel] command in
+        channel?.invokeMethod(
+          "applicationCommand",
+          arguments: ["command": command.rawValue]
+        )
+      }
+      result(nil)
+    }
   }
 }
 
@@ -307,13 +543,32 @@ struct NativeExternalTranslationRequest: Equatable {
   let text: String
 }
 
+final class ExternalTranslationRequestFactory {
+  static let shared = ExternalTranslationRequestFactory()
+
+  private let lock = NSLock()
+  private var sequence: Int64 = 0
+
+  func makeRequest(text: String) -> NativeExternalTranslationRequest {
+    lock.lock()
+    defer { lock.unlock() }
+    precondition(sequence < Int64.max, "External translation sequence exhausted")
+    sequence += 1
+    return NativeExternalTranslationRequest(sequence: sequence, text: text)
+  }
+}
+
 final class ExternalTranslationServiceProvider: NSObject {
   typealias RequestHandler = (NativeExternalTranslationRequest) -> Void
 
   private let onRequest: RequestHandler
-  private var sequence: Int64 = 0
+  private let requestFactory: ExternalTranslationRequestFactory
 
-  init(onRequest: @escaping RequestHandler) {
+  init(
+    requestFactory: ExternalTranslationRequestFactory = ExternalTranslationRequestFactory(),
+    onRequest: @escaping RequestHandler
+  ) {
+    self.requestFactory = requestFactory
     self.onRequest = onRequest
   }
 
@@ -324,9 +579,7 @@ final class ExternalTranslationServiceProvider: NSObject {
   ) {
     do {
       let text = try ServicePasteboardParser.parse(pasteboard)
-      precondition(sequence < Int64.max, "Service request sequence exhausted")
-      sequence += 1
-      onRequest(NativeExternalTranslationRequest(sequence: sequence, text: text))
+      onRequest(requestFactory.makeRequest(text: text))
     } catch let requestError as ServiceRequestError {
       errorPointer?.pointee = requestError.localizedDescription as NSString
     } catch {
@@ -422,9 +675,10 @@ final class MacOSServiceRegistration {
 
 @main
 class AppDelegate: FlutterAppDelegate {
-  private lazy var translationServiceProvider = ExternalTranslationServiceProvider { request in
-    ExternalTranslationBridge.shared.receive(request)
-  }
+  private lazy var translationServiceProvider = ExternalTranslationServiceProvider(
+    requestFactory: .shared,
+    onRequest: ExternalTranslationBridge.shared.receive
+  )
   private let serviceRegistration = MacOSServiceRegistration()
   private let lifecycleController = ApplicationLifecycleController(
     showMainWindow: { MainWindowPresenter.shared.showMainWindow() }

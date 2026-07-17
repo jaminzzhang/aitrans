@@ -1,6 +1,8 @@
 import 'package:aitrans/app.dart';
 import 'package:aitrans/core/ai/ai_provider.dart';
 import 'package:aitrans/core/platform/external_translation_request.dart';
+import 'package:aitrans/core/platform/application_command_platform_bridge.dart';
+import 'package:aitrans/features/app/logic/application_command_coordinator.dart';
 import 'package:aitrans/features/translate/logic/external_translation_coordinator.dart';
 import 'package:aitrans/features/translate/logic/translate_controller.dart';
 import 'package:flutter/material.dart';
@@ -166,5 +168,59 @@ void main() {
 
     expect(find.text('设置'), findsNothing);
     expect(find.text('selected text'), findsOneWidget);
+  });
+
+  testWidgets('showTranslation command closes settings and focuses input', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [aiProviderProvider.overrideWith((_) => _NullAIProvider())],
+        child: const AITransApp(),
+      ),
+    );
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('设置'), findsOneWidget);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(AITransApp)),
+      listen: false,
+    );
+
+    container.read(applicationCommandEventProvider.notifier).state =
+        const ApplicationCommandEvent(ApplicationCommand.showTranslation);
+    await tester.pumpAndSettle();
+
+    expect(find.text('设置'), findsNothing);
+    expect(
+      tester
+          .widget<TextField>(find.byType(TextField).first)
+          .focusNode
+          ?.hasFocus,
+      isTrue,
+    );
+  });
+
+  testWidgets('showSettings command opens settings from the main view', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [aiProviderProvider.overrideWith((_) => _NullAIProvider())],
+        child: const AITransApp(),
+      ),
+    );
+    await tester.pump();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(AITransApp)),
+      listen: false,
+    );
+
+    container.read(applicationCommandEventProvider.notifier).state =
+        const ApplicationCommandEvent(ApplicationCommand.showSettings);
+    await tester.pumpAndSettle();
+
+    expect(find.text('设置'), findsOneWidget);
+    expect(find.text('AI 服务'), findsOneWidget);
   });
 }

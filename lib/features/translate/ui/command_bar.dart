@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/theme/app_tokens.dart';
 import '../logic/translate_controller.dart';
+import '../logic/translation_input_focus.dart';
 
 /// 顶部命令条：暖纸毛玻璃材质 + 搜索图标 + 输入 + 内联翻译/清空。
 ///
@@ -98,6 +99,11 @@ class _CommandBarState extends ConsumerState<CommandBar> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(translationInputFocusRequestProvider, (previous, next) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusNode.requestFocus();
+      });
+    });
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
     final inputText = ref.watch(inputTextProvider);
