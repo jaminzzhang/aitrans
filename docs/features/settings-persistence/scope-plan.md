@@ -177,3 +177,13 @@
 | S6 安装主密钥 | [KNOWN] 生成、复用并验证 256-bit 随机主密钥 | [KNOWN] 本地应用私有目录；不含口令和系统 Keychain | [KNOWN] 首次生成、重建复用、损坏拒绝测试 | [KNOWN] focused unit tests | [KNOWN] 需要读取设备或生产身份时停止 |
 | S7 AEAD 凭证仓储 | [KNOWN] Provider 隔离加密、解密、删除与防篡改 | [KNOWN] AES-256-GCM envelope；不改 Provider 协议 | [KNOWN] 明文不落盘、round-trip、AAD swap、tamper 测试 | [KNOWN] focused repository tests | [KNOWN] 算法不提供认证标签时停止 |
 | S8 装配与迁移 | [KNOWN] 启动改用本地 AEAD，移除 Keychain 依赖和平台 entitlement | [KNOWN] 当前开发版本无已验证旧方案凭证迁移 | [KNOWN] 设置保存/重启恢复和依赖扫描 | [KNOWN] full tests + macOS build/startup | [KNOWN] 发现真实历史凭证迁移要求时停止 |
+
+## 16. 2026-07-17 Documents 权限与手动搬迁
+
+| 项 | 内容 |
+|---|---|
+| [KNOWN] 用户选择 | [KNOWN] App 不进行旧 Documents 数据探测；使用独立脚本手动搬迁 |
+| [KNOWN] App 存储目标 | [KNOWN] `getApplicationSupportDirectory()/AITrans`；macOS 实际路径包含 Bundle ID |
+| [KNOWN] 脚本来源 | [KNOWN] `~/Documents` 中三个 Hive 文件，以及非沙盒或历史沙盒 Application Support 中的主密钥 |
+| [KNOWN] 冲突策略 | [KNOWN] 任一来源和目标同时存在时，搬迁开始前整体退出，不覆盖目标 |
+| [KNOWN] TDD 切片 S9 | [KNOWN] 先写存储引导器和脚本迁移/冲突测试，再修改 App 初始化并执行真实手动搬迁 |

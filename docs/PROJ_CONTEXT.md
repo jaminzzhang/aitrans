@@ -33,6 +33,7 @@
 | `lib/core/config/` | [KNOWN] Runtime AI configuration, non-secret Hive preferences, and composed settings repository | `ai_config.dart`, `settings_preferences_store.dart`, `settings_repository.dart` | [KNOWN] Verified in source and tests |
 | `lib/core/security/` | [KNOWN] Provider-scoped credential boundary, local master-key store, and AES-GCM adapter | `provider_credential_store.dart`, `local_master_key_store.dart`, `encrypted_provider_credential_store.dart` | [KNOWN] Verified in source and tests |
 | `lib/core/platform/` | [KNOWN] Platform integration for hotkeys | `hotkey_service.dart` | [KNOWN] Verified by file structure |
+| `lib/core/platform/local_storage_bootstrap.dart` | [KNOWN] Resolves the private Application Support/AITrans directory and initializes Hive without Documents access | `LocalStorageBootstrap.initialize()` | [KNOWN] Verified by focused test and macOS host files |
 | `lib/features/translate/` | [KNOWN] Translation state, controller, and UI | `translate_controller.dart`, `translate_page.dart` | [KNOWN] Verified by file structure |
 | `lib/features/settings/` | [KNOWN] Settings UI | `settings_page.dart` | [KNOWN] Verified by file structure |
 | `lib/shared/theme/` | [KNOWN] Shared visual theme | `app_theme.dart` | [KNOWN] Verified by file structure |
@@ -44,7 +45,7 @@
 | [INFERRED] App startup | [KNOWN] Process launch | [KNOWN] Initialize Flutter → initialize/open Hive → configure macOS window/hotkey when applicable → run app | `main.dart`, config, cache, platform | [KNOWN] Initialization errors are currently logged and startup continues; required failure policy is待确认 |
 | [INFERRED] Translation | [KNOWN] User submits source text | [INFERRED] Controller selects provider → sends request → updates state → renders result → may use cache | translate, AI, cache | [KNOWN] Exact timeout, cancellation, retry, stale-response, and cache rules are待确认 |
 | [KNOWN] Settings | [KNOWN] User opens Settings | [KNOWN] UI copies active configuration into a local Draft → Provider switch loads isolated credential → connection test uses Draft → Save writes credential and preferences → active Riverpod state updates only after success | settings, config, security | [KNOWN] Cross-store persistence has no shared transaction; failure keeps active state unchanged and remains retryable |
-| [KNOWN] macOS quick invocation | [KNOWN] Global hotkey | [KNOWN] Registered hotkey interacts with the macOS app; exact focus/submit behavior needs verification | platform, main | [KNOWN] Permission and shortcut-conflict behavior are待确认 |
+| [KNOWN] macOS quick invocation | [KNOWN] Global `⌘⇧T` | [KNOWN] Hidden→capture selected text before activation, fall back to clipboard, show/focus the window, and prefill input without automatic translation; visible→hide without reading text | platform, main, translate coordinator | [KNOWN] Some target apps may not expose `AXSelectedText`; Accessibility denial uses clipboard fallback |
 
 ## 5. External dependencies
 
@@ -52,7 +53,7 @@
 |---|---|---|---|---|
 | [KNOWN] AI provider implementations | Outbound | [KNOWN] Produce translation-related responses | [KNOWN] Requires source verification in focused tasks | [KNOWN] Timeout, retry, schema, privacy, and cost rules are待确认 |
 | [KNOWN] OpenAI-compatible SDK adapter | Outbound | [KNOWN] 统一 OpenAI、DeepSeek、Qwen 与 macOS Ollama 的文本、流式和 function-tool 协议 | [KNOWN] 结构化错误、网络取消和 capability 校验由 feature 契约约束 | [KNOWN] 不执行模型请求的工具；执行器必须另立 Scope |
-| [KNOWN] Hive translation cache | Local | [KNOWN] Persist translated results and access timestamps | [KNOWN] Initialization exceptions are caught in `main.dart` | [KNOWN] Encryption, retention, deletion, migration, and recovery are待确认 |
+| [KNOWN] Hive translation cache | Local | [KNOWN] Persist translated results and access timestamps under Application Support/Bundle ID/AITrans | [KNOWN] Initialization exceptions are caught in `main.dart`; legacy Documents data uses an explicit external migration script | [KNOWN] Encryption, retention, deletion, and recovery are待确认 |
 | [KNOWN] Hive settings-preferences box | Local | [KNOWN] Persists schema version, Provider ID, Base URL, and model as one non-secret record | [KNOWN] Missing or malformed data falls back to Ollama defaults | [KNOWN] Cross-version migrations beyond schema 1 require a future migration plan |
 | [KNOWN] Encrypted settings state | Local | [KNOWN] Atomically persists non-secret preferences and Provider-scoped AES-256-GCM envelopes in one versioned Hive state; 256-bit master key remains a separate local file | [KNOWN] Missing/corrupt keys never trigger implicit replacement; UI exposes a confirmed reset path | [KNOWN] Same-user file readers may obtain both key and ciphertext; this is weaker than OS secure storage |
 | [KNOWN] macOS hotkey/window plugins | Local platform | [KNOWN] Window behavior and global shortcut | [KNOWN] Initialization exceptions are caught in `main.dart` | [KNOWN] Required permissions and conflict UX are待确认 |

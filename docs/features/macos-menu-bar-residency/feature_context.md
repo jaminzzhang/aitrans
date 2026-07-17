@@ -6,12 +6,12 @@
 |---|---|
 | 需求名称 | [KNOWN] macOS 状态栏常驻与主窗口恢复 |
 | feature-id | [KNOWN] `macos-menu-bar-residency` |
-| 需求来源 | [KNOWN] 用户要求 AITrans 在 macOS 状态栏常驻；用户于 2026-07-16 追加确认左键点击需切换主窗口；2026-07-17 追加确认右键菜单包含“翻译、设置、退出”，翻译优先读取选中文字、回退剪贴板，并授权请求辅助功能权限 |
+| 需求来源 | [KNOWN] 用户要求 AITrans 在 macOS 状态栏常驻；用户于 2026-07-16 追加确认左键点击需切换主窗口；2026-07-17 追加确认右键菜单包含“翻译、设置、退出”，翻译优先读取选中文字、回退剪贴板，并授权请求辅助功能权限；随后要求菜单增宽、退出前增加分割线、翻译显示快捷键并优化样式，最终把菜单宽度调整为 180pt；同日确认全局 `⌘⇧T` 从隐藏打开窗口时读取当前选区并展示在输入框 |
 | 所属版本 | [KNOWN] 待确认 |
 | 业务负责人 | [KNOWN] 待确认 |
 | 研发负责人 | [KNOWN] 待确认 |
 | 测试负责人 | [KNOWN] 待确认 |
-| 当前状态 | [COMPUTED] `LOCAL_VERIFIED`；左键 show/close toggle 与右键“翻译、设置、退出”均完成本地自动化和 macOS Debug 宿主验证；真实宿主未触发“翻译”，以避免读取并发送用户当前剪贴板 |
+| 当前状态 | [COMPUTED] `LOCAL_VERIFIED`；左键 show/close toggle、右键动作和 180pt/分割线/快捷键/语义图标样式均完成本地自动化；既有动作完成 macOS Debug 宿主验证；真实宿主未触发“翻译”，以避免读取并发送用户当前剪贴板 |
 
 ## 2. 需求目标与范围
 
@@ -21,7 +21,8 @@
 | [KNOWN] 从状态栏切换主窗口 | [KNOWN] 用户点击 AITrans 状态栏项目可切换已有主窗口的展示与关闭状态 | [KNOWN] 已关闭、已隐藏或已最小化窗口恢复并聚焦；已显示窗口关闭；不创建第二个主窗口 |
 | [KNOWN] 保留标准退出路径 | [KNOWN] 窗口关闭与应用退出语义分离 | [KNOWN] `Cmd+Q`、应用菜单“退出”和调试脚本的正常退出 AppleEvent 仍终止进程 |
 | [KNOWN] 允许用户隐藏状态栏项目 | [KNOWN] macOS 设置页提供独立开关，默认显示状态栏项目 | [INFERRED] 切换立即生效并持久化；失败时 UI 回退并显示不含内部异常的错误 |
-| [KNOWN] 右键状态栏菜单 | [KNOWN] 右键弹出“翻译、设置、退出”；翻译优先读取当前选中文字，无权限、无选区或空白时回退剪贴板 | [KNOWN] 翻译打开主窗口并进入既有翻译流程；设置打开既有设置页；退出终止进程 |
+| [KNOWN] 右键状态栏菜单 | [KNOWN] 右键弹出宽 180pt 的“翻译、设置、分割线、退出”原生菜单；翻译显示独立菜单快捷键 `⌘T`，三项使用语义图标；翻译优先读取当前选中文字，无权限、无选区或空白时回退剪贴板 | [KNOWN] 翻译打开主窗口并进入既有翻译流程；设置打开既有设置页；退出终止进程 |
+| [KNOWN] 快捷键选区预填 | [KNOWN] `⌘⇧T` 从隐藏状态打开窗口时，在激活 AITrans 前读取当前选区，选区不可用时回退剪贴板 | [KNOWN] 文本只填入输入框，不自动发起翻译；从显示状态关闭窗口时不读取文本 |
 
 ### 范围内
 
@@ -57,7 +58,7 @@
 | MAIN-4 | Dock 与既有入口 | [KNOWN] Dock reopen、全局快捷键或 macOS Service 请求到达 | [INFERRED] 复用同一主窗口 presenter，不创建新窗口 | [KNOWN] 所有入口得到一致的显示和聚焦结果 | [KNOWN] Dock reopen XCTest、快捷键/Service 回归 | P1 | [KNOWN] 已确认 |
 | MAIN-5 | 偏好切换 | [KNOWN] macOS 设置页切换“显示状态栏图标” | [INFERRED] 经 typed platform bridge 即时创建或移除状态项，并以独立 `UserDefaults` 键持久化 | [KNOWN] 重启后保持选择；Provider 和凭证状态不变 | [KNOWN] 默认/开/关/重启恢复、UI failure rollback tests | P1 | [INFERRED] 方案已由确认范围收敛 |
 | MAIN-6 | 显式退出 | [KNOWN] `Cmd+Q`、菜单 Quit 或正常退出 AppleEvent | [KNOWN] 继续走 AppKit `terminate:` 退出流程 | [KNOWN] 进程退出并释放 Hive 锁与状态栏项目 | [KNOWN] 菜单 wiring、调试脚本重启与单进程验证 | P1 | [KNOWN] 已确认 |
-| MAIN-7 | 右键菜单 | [KNOWN] 状态栏收到 rightMouseUp | [KNOWN] 展示顺序固定的“翻译、设置、退出”，不触发左键 toggle | [KNOWN] 用户选择一项后仅执行对应动作 | [KNOWN] command enum/controller XCTest 与真实 AX 菜单读取 | P1 | [KNOWN] 用户于 2026-07-17 确认 |
+| MAIN-7 | 右键菜单 | [KNOWN] 状态栏收到 rightMouseUp | [KNOWN] 展示 180pt 最小宽度的原生菜单，顺序固定为“翻译、设置、分割线、退出”；翻译显示独立菜单快捷键 `⌘T`；三项使用语义图标；不触发左键 toggle | [KNOWN] 用户选择一项后仅执行对应动作 | [KNOWN] presentation/command/controller XCTest 与真实 AX 菜单读取 | P1 | [KNOWN] 用户于 2026-07-17 确认并追加视觉要求 |
 | MAIN-8 | 菜单翻译 | [KNOWN] 用户选择“翻译” | [KNOWN] 按需请求 Accessibility，读取 focused element 的 selected text；空值时读取普通剪贴板；有文本则复用外部翻译校验和翻译流程，无文本则只打开并聚焦输入 | [KNOWN] 唯一主窗口展示，设置弹层关闭，输入文本被翻译或等待输入 | [KNOWN] resolver 优先级、共享 sequence、Flutter command/coordinator tests | P1 | [KNOWN] 用户于 2026-07-17 确认 |
 | BRANCH-1 | 重复注册/点击 | [KNOWN] 生命周期回调或设置重复提交相同状态 | [INFERRED] 状态管理器按目标状态幂等处理并持有至多一个 item | [KNOWN] 不出现重复图标或重复窗口 | [KNOWN] call-count 与 identity tests | P1 | [INFERRED] 已收敛 |
 | BRANCH-2 | 状态栏空间/图标异常 | [KNOWN] 系统未展示状态项或 bundled image 加载失败 | [INFERRED] 不声明系统保证可见；缺图时使用可访问的短文本回退，Dock 与快捷键保持可用 | [KNOWN] 应用不崩溃且仍有恢复路径 | [KNOWN] nil-image failure injection 与回退测试 | P2 | [INFERRED] 已收敛 |
@@ -77,6 +78,8 @@
 | MBR-006 | [INFERRED] 幂等 | [INFERRED] 重复启用、禁用、注册或显示操作不得产生重复 item 或窗口 | [KNOWN] 重复生命周期事件 | [KNOWN] 状态收敛到目标值 | [KNOWN] 进程内规则，不跨重启保留对象 identity | [INFERRED] 生命周期安全要求 |
 | MBR-007 | [KNOWN] 菜单输入优先级 | [KNOWN] “翻译”先取非空选中文字，再取非空剪贴板；两者都为空时不得发起 AI 请求 | [KNOWN] Accessibility selected text 与 general pasteboard | [KNOWN] 一个外部翻译请求或仅显示输入页 | [KNOWN] 文本统一 trim，并继续受 5,000 code-point 校验约束 | [KNOWN] 用户确认与现有外部翻译规则 |
 | MBR-008 | [KNOWN] 菜单动作隔离 | [KNOWN] 左键只切换窗口；右键只展示菜单；“设置”复用现有 SettingsSheet；“退出”直接调用 AppKit terminate | [KNOWN] mouse event/menu command | [KNOWN] 单一确定动作 | [KNOWN] Flutter bridge 失效不得影响原生退出 | [KNOWN] 用户确认 |
+| MBR-009 | [KNOWN] 菜单视觉契约 | [KNOWN] 右键菜单设置 180pt 最小宽度；退出前使用原生分割线；翻译使用独立菜单快捷键 `⌘T`，避免与现有“显示/隐藏窗口”全局快捷键 `⌘⇧T` 冲突；macOS 11 及以上显示语义系统图标 | [KNOWN] menu presentation | [KNOWN] 宽菜单、清晰动作分组和快捷键提示 | [KNOWN] macOS 10.15 无系统符号时保留原生文本菜单，不影响动作 | [KNOWN] 用户最终宽度确认与现有快捷键实现 |
+| MBR-010 | [KNOWN] 快捷键选区预填 | [KNOWN] `⌘⇧T` 仅在打开窗口分支读取选区，并且必须先读取再激活窗口；选区不可用时回退剪贴板 | [KNOWN] 全局快捷键与外部文本 | [KNOWN] 输入框更新，不自动调用 Provider | [KNOWN] 关闭分支不读取；读取失败不得阻止窗口打开 | [KNOWN] 用户于 2026-07-17 确认 |
 
 ## 5. 金融核心系统风险基线
 
@@ -87,7 +90,7 @@
 | 交易一致性 | [KNOWN] 否 | [KNOWN] 不引入交易或远程写入 | [KNOWN] 无 | NONE |
 | 状态流转 | [KNOWN] 是 | [KNOWN] 状态项与窗口存在 visible/hidden/minimized/terminated 状态 | [KNOWN] 无阻断问题 | P1 |
 | 幂等与并发 | [KNOWN] 是 | [INFERRED] 启动、偏好和点击事件可能重复到达主线程 | [KNOWN] 无阻断问题 | P1 |
-| 权限与审计 | [KNOWN] 是 | [KNOWN] 跨应用读取选区使用 macOS Accessibility，且只在显式“翻译”操作时请求；用户拒绝时回退剪贴板 | [KNOWN] 发行方式需接受关闭 App Sandbox 后不能按普通沙盒 App 路径提交 Mac App Store | P1 |
+| 权限与审计 | [KNOWN] 是 | [KNOWN] 跨应用读取选区使用 macOS Accessibility，仅在显式菜单“翻译”或 `⌘⇧T` 打开窗口时请求；用户拒绝时回退剪贴板 | [KNOWN] 发行方式需接受关闭 App Sandbox 后不能按普通沙盒 App 路径提交 Mac App Store | P1 |
 | 隐私与监管 | [KNOWN] 是 | [KNOWN] 选区或剪贴板文本经既有外部翻译 channel 进入既有 AI 流程；实现不记录文本，真实宿主验证未触发翻译 | [KNOWN] 产品隐私说明需披露按需读取和远程 Provider 处理 | P1 |
 | 生产变更与回滚 | [KNOWN] 是 | [KNOWN] macOS Runner 生命周期和资源发生本地客户端变更 | [KNOWN] 无阻断问题 | P2 |
 

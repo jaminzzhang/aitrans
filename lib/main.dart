@@ -11,6 +11,7 @@ import 'core/config/ai_config.dart';
 import 'core/config/settings_preferences_store.dart';
 import 'core/config/settings_repository.dart';
 import 'core/platform/hotkey_service.dart';
+import 'core/platform/local_storage_bootstrap.dart';
 import 'core/platform/local_storage_protection.dart';
 import 'core/security/encrypted_provider_credential_store.dart';
 import 'core/security/local_master_key_store.dart';
@@ -24,10 +25,13 @@ void main() async {
   AIConfig initialConfig = AIConfig(providerType: ProviderType.ollama);
   String? settingsStorageError;
   var hiveReady = false;
+  late Directory storageDirectory;
 
   try {
-    // 初始化 Hive
-    await Hive.initFlutter();
+    storageDirectory = await LocalStorageBootstrap(
+      getApplicationSupportDirectory: getApplicationSupportDirectory,
+      initializeHive: Hive.init,
+    ).initialize();
 
     // 注册 Hive 适配器 (检查是否已注册)
     if (!Hive.isAdapterRegistered(2)) {
@@ -52,10 +56,9 @@ void main() async {
       final credentialsBox = await Hive.openBox<dynamic>(
         'provider_credentials',
       );
-      final supportDirectory = await getApplicationSupportDirectory();
-      final keyFile = File('${supportDirectory.path}/.aitrans.provider.key');
+      final keyFile = File('${storageDirectory.path}/.aitrans.provider.key');
       await const LocalStorageProtection().excludeFromBackup([
-        supportDirectory.path,
+        storageDirectory.path,
         if (credentialsBox.path != null) credentialsBox.path!,
       ]);
       final settingsStore = EncryptedProviderCredentialStore(
@@ -96,7 +99,9 @@ void main() async {
       await WindowManipulator.initialize();
       await WindowManipulator.makeTitlebarTransparent();
       await WindowManipulator.enableFullSizeContentView();
-      await WindowManipulator.setMaterial(NSVisualEffectViewMaterial.underWindowBackground);
+      await WindowManipulator.setMaterial(
+        NSVisualEffectViewMaterial.underWindowBackground,
+      );
 
       // 注册全局快捷键
       await HotkeyService().register();

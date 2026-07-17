@@ -50,12 +50,16 @@ final class ExternalTranslationPlatformBridge {
     final sequence = arguments['sequence'];
     final source = arguments['source'];
     final text = arguments['text'];
-    if (sequence is! int || source != 'macosService' || text is! String) {
-      return null;
-    }
+    if (sequence is! int || text is! String) return null;
+    final decodedSource = switch (source) {
+      'macosService' => ExternalTranslationSource.macosService,
+      'macosHotkey' => ExternalTranslationSource.macosHotkey,
+      _ => null,
+    };
+    if (decodedSource == null) return null;
     return ExternalTranslationPlatformEvent(
       sequence: sequence,
-      source: ExternalTranslationSource.macosService,
+      source: decodedSource,
       text: text,
     );
   }

@@ -41,6 +41,7 @@
 | TR-001 | [KNOWN] The product provides text input and displays a translation result. | Translation | `aitrans-prd.md` | [KNOWN] Confirmed brief |
 | TR-002 | [KNOWN] The intended result view includes context examples, movie quotations, and exam items. | Learning context | `aitrans-prd.md` | [KNOWN] Confirmed brief; acceptance details待确认 |
 | TR-003 | [KNOWN] On macOS, the intended flow supports global-shortcut invocation and Enter-to-translate. | Quick invocation | `aitrans-prd.md` | [KNOWN] Confirmed brief; shortcut specification待确认 |
+| TR-005 | [KNOWN] macOS 全局快捷键 `⌘⇧T` 从隐藏打开窗口时先读取当前选区、选区不可用时回退剪贴板，并只预填输入框；关闭分支不读取文本。 | Quick invocation | `docs/features/macos-menu-bar-residency/` | [KNOWN] User-confirmed scope |
 | TR-004 | [KNOWN] The intended supported platforms are macOS, iOS, and Android. | Platform scope | `aitrans-prd.md` | [KNOWN] Confirmed brief |
 | AI-001 | [KNOWN] OpenAI、DeepSeek、Qwen 与 macOS Ollama 的首期标准调用统一封装在项目 `AIProvider` 边界内。 | Provider integration | `docs/features/ai-sdk-integration/` | [KNOWN] User-confirmed scope |
 | AI-002 | [KNOWN] 首期支持 function-tool 声明、选择、非流式/流式 tool calls、显式 tool result 和多轮闭环。 | Tool-call protocol | `docs/features/ai-sdk-integration/` | [KNOWN] User-confirmed scope |
@@ -50,3 +51,4 @@
 | SET-002 | [KNOWN] API Key 必须按稳定 Provider ID 隔离；空值表示删除当前 Provider 凭证。 | Provider credential | `docs/features/settings-persistence/` | [KNOWN] User-confirmed scope |
 | SET-003 | [KNOWN] 设置编辑与连接测试只操作 Draft；只有持久化成功后才更新生效配置。 | Settings workflow | `docs/features/settings-persistence/` | [KNOWN] User-confirmed scope |
 | SET-004 | [KNOWN] 空 Base URL 或模型表示显式删除自定义覆盖并恢复 Provider preset。 | Provider configuration | `docs/features/settings-persistence/` | [KNOWN] User-confirmed scope |
+| SET-005 | [KNOWN] App 的 Hive 与本地主密钥只存放在 Application Support 的 Bundle ID/AITrans 私有目录；不得在启动时探测 Documents，旧数据只由显式脚本手动搬迁。 | Local storage | `docs/features/settings-persistence/` | [KNOWN] User-confirmed scope |

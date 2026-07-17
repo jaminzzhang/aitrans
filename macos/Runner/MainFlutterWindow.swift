@@ -13,6 +13,9 @@ class MainFlutterWindow: NSWindow {
     ExternalTranslationBridge.shared.attach(
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
+    HotkeySelectionCaptureBridge.shared.attach(
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
     ApplicationCommandBridge.shared.attach(
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )

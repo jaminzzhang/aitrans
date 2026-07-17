@@ -34,6 +34,40 @@ enum MenuBarCommand: Int, CaseIterable {
       return "退出"
     }
   }
+
+  var keyEquivalent: String {
+    self == .translate ? "t" : ""
+  }
+
+  var keyEquivalentModifierMask: NSEvent.ModifierFlags {
+    self == .translate ? [.command] : []
+  }
+
+  var systemImageName: String {
+    switch self {
+    case .translate:
+      return "character.bubble"
+    case .settings:
+      return "gearshape"
+    case .quit:
+      return "power"
+    }
+  }
+}
+
+enum MenuBarMenuElement: Equatable {
+  case command(MenuBarCommand)
+  case separator
+}
+
+enum MenuBarMenuPresentation {
+  static let minimumWidth: CGFloat = 180
+  static let elements: [MenuBarMenuElement] = [
+    .command(.translate),
+    .command(.settings),
+    .separator,
+    .command(.quit),
+  ]
 }
 
 protocol MenuBarStatusItem: AnyObject {
@@ -85,14 +119,28 @@ final class AppKitMenuBarStatusItem: MenuBarStatusItem {
 
   private func configureMenu() {
     menu.removeAllItems()
-    for command in MenuBarCommand.allCases {
+    menu.minimumWidth = MenuBarMenuPresentation.minimumWidth
+    menu.autoenablesItems = false
+    for element in MenuBarMenuPresentation.elements {
+      guard case let .command(command) = element else {
+        menu.addItem(.separator())
+        continue
+      }
       let item = NSMenuItem(
         title: command.title,
         action: #selector(handleMenuCommand(_:)),
-        keyEquivalent: ""
+        keyEquivalent: command.keyEquivalent
       )
       item.target = self
       item.tag = command.rawValue
+      item.keyEquivalentModifierMask = command.keyEquivalentModifierMask
+      if #available(macOS 11.0, *) {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        item.image = NSImage(
+          systemSymbolName: command.systemImageName,
+          accessibilityDescription: command.title
+        )?.withSymbolConfiguration(configuration)
+      }
       menu.addItem(item)
     }
   }
@@ -246,6 +294,86 @@ final class MenuBarTranslationTextResolver {
     guard let text else { return nil }
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? nil : trimmed
+  }
+}
+
+enum HotkeySelectionCaptureMethodError: Error, Equatable {
+  case unsupportedMethod
+}
+
+final class HotkeySelectionCaptureMethodHandler {
+  private let resolveText: () -> String?
+  private let requestFactory: ExternalTranslationRequestFactory
+  private let onRequest: (NativeExternalTranslationRequest) -> Void
+
+  init(
+    resolveText: @escaping () -> String?,
+    requestFactory: ExternalTranslationRequestFactory,
+    onRequest: @escaping (NativeExternalTranslationRequest) -> Void
+  ) {
+    self.resolveText = resolveText
+    self.requestFactory = requestFactory
+    self.onRequest = onRequest
+  }
+
+  func handle(method: String, arguments: Any?) throws -> Any? {
+    guard method == "captureSelection" else {
+      throw HotkeySelectionCaptureMethodError.unsupportedMethod
+    }
+    guard let text = resolveText() else { return false }
+    onRequest(requestFactory.makeRequest(text: text, source: .macosHotkey))
+    return true
+  }
+}
+
+final class HotkeySelectionCaptureBridge {
+  static let shared: HotkeySelectionCaptureBridge = {
+    let selectedTextReader = AccessibilitySelectedTextReader()
+    let resolver = MenuBarTranslationTextResolver(
+      readSelectedText: {
+        selectedTextReader.readSelectedText(promptIfNeeded: true)
+      },
+      readClipboardText: {
+        NSPasteboard.general.string(forType: .string)
+      }
+    )
+    return HotkeySelectionCaptureBridge(
+      handler: HotkeySelectionCaptureMethodHandler(
+        resolveText: resolver.resolve,
+        requestFactory: .shared,
+        onRequest: ExternalTranslationBridge.shared.receive
+      )
+    )
+  }()
+
+  private let handler: HotkeySelectionCaptureMethodHandler
+  private var channel: FlutterMethodChannel?
+
+  init(handler: HotkeySelectionCaptureMethodHandler) {
+    self.handler = handler
+  }
+
+  func attach(binaryMessenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "com.aitrans/hotkey_selection",
+      binaryMessenger: binaryMessenger
+    )
+    self.channel = channel
+    channel.setMethodCallHandler { [handler] call, result in
+      do {
+        result(try handler.handle(method: call.method, arguments: call.arguments))
+      } catch HotkeySelectionCaptureMethodError.unsupportedMethod {
+        result(FlutterMethodNotImplemented)
+      } catch {
+        result(
+          FlutterError(
+            code: "capture_failed",
+            message: "Unable to read selected text.",
+            details: nil
+          )
+        )
+      }
+    }
   }
 }
 
@@ -538,9 +666,25 @@ enum ServicePasteboardParser {
   }
 }
 
+enum NativeExternalTranslationSource: String, Equatable {
+  case macosService
+  case macosHotkey
+}
+
 struct NativeExternalTranslationRequest: Equatable {
   let sequence: Int64
+  let source: NativeExternalTranslationSource
   let text: String
+
+  init(
+    sequence: Int64,
+    source: NativeExternalTranslationSource = .macosService,
+    text: String
+  ) {
+    self.sequence = sequence
+    self.source = source
+    self.text = text
+  }
 }
 
 final class ExternalTranslationRequestFactory {
@@ -549,12 +693,19 @@ final class ExternalTranslationRequestFactory {
   private let lock = NSLock()
   private var sequence: Int64 = 0
 
-  func makeRequest(text: String) -> NativeExternalTranslationRequest {
+  func makeRequest(
+    text: String,
+    source: NativeExternalTranslationSource = .macosService
+  ) -> NativeExternalTranslationRequest {
     lock.lock()
     defer { lock.unlock() }
     precondition(sequence < Int64.max, "External translation sequence exhausted")
     sequence += 1
-    return NativeExternalTranslationRequest(sequence: sequence, text: text)
+    return NativeExternalTranslationRequest(
+      sequence: sequence,
+      source: source,
+      text: text
+    )
   }
 }
 
@@ -639,7 +790,7 @@ final class ExternalTranslationBridge {
           "externalTranslationRequest",
           arguments: [
             "sequence": request.sequence,
-            "source": "macosService",
+            "source": request.source.rawValue,
             "text": request.text,
           ]
         )

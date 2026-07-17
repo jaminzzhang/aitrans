@@ -19,6 +19,17 @@ void main() {
     expect(event.text, 'selected text');
   });
 
+  test('decodes the typed macOS hotkey payload', () {
+    final event = ExternalTranslationPlatformBridge.decode({
+      'sequence': 8,
+      'source': 'macosHotkey',
+      'text': 'selected by hotkey',
+    });
+
+    expect(event, isNotNull);
+    expect(event!.source, ExternalTranslationSource.macosHotkey);
+  });
+
   test('rejects malformed or unsupported method payloads', () {
     expect(ExternalTranslationPlatformBridge.decode(null), isNull);
     expect(

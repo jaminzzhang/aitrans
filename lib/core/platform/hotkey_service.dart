@@ -3,6 +3,53 @@ import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+typedef AsyncWindowAction = Future<void> Function();
+typedef AsyncWindowVisibility = Future<bool> Function();
+
+/// Coordinates the observable window behavior of the global shortcut.
+class HotkeyWindowController {
+  HotkeyWindowController({
+    required this.isWindowVisible,
+    required this.hideWindow,
+    required this.captureSelection,
+    required this.showWindow,
+    required this.focusWindow,
+  });
+
+  final AsyncWindowVisibility isWindowVisible;
+  final AsyncWindowAction hideWindow;
+  final AsyncWindowAction captureSelection;
+  final AsyncWindowAction showWindow;
+  final AsyncWindowAction focusWindow;
+
+  Future<bool> toggle() async {
+    if (await isWindowVisible()) {
+      await hideWindow();
+      return false;
+    }
+
+    // Capture before activating AITrans; focusing our window would replace the
+    // accessibility system's focused element and lose the external selection.
+    try {
+      await captureSelection();
+    } catch (_) {
+      // Window toggling remains available when Accessibility or the native
+      // bridge cannot provide text.
+    }
+    await showWindow();
+    await focusWindow();
+    return true;
+  }
+}
+
+class HotkeySelectionCaptureService {
+  static const _channel = MethodChannel('com.aitrans/hotkey_selection');
+
+  Future<void> capture() async {
+    await _channel.invokeMethod<bool>('captureSelection');
+  }
+}
+
 /// 快捷键服务 (仅 macOS)
 class HotkeyService {
   static final HotkeyService _instance = HotkeyService._internal();
@@ -10,6 +57,14 @@ class HotkeyService {
   HotkeyService._internal();
 
   VoidCallback? _onToggleWindow;
+
+  late final HotkeyWindowController _windowController = HotkeyWindowController(
+    isWindowVisible: windowManager.isVisible,
+    hideWindow: windowManager.hide,
+    captureSelection: HotkeySelectionCaptureService().capture,
+    showWindow: windowManager.show,
+    focusWindow: windowManager.focus,
+  );
 
   /// 设置窗口切换回调
   void setToggleWindowCallback(VoidCallback callback) {
@@ -42,11 +97,8 @@ class HotkeyService {
 
   /// 切换窗口显示/隐藏
   Future<void> _toggleWindow() async {
-    if (await windowManager.isVisible()) {
-      await windowManager.hide();
-    } else {
-      await windowManager.show();
-      await windowManager.focus();
+    final didOpen = await _windowController.toggle();
+    if (didOpen) {
       _onToggleWindow?.call();
     }
   }

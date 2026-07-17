@@ -6,7 +6,7 @@
 |---|---|
 | 需求名称 | [KNOWN] 设置持久化与 Provider 凭证隔离 |
 | feature-id | [KNOWN] `settings-persistence` |
-| 需求来源 | [KNOWN] 用户确认优化当前仅驻留 Riverpod 内存的设置 |
+| 需求来源 | [KNOWN] 用户确认优化当前仅驻留 Riverpod 内存的设置；2026-07-17 确认 App 不得自动访问 Documents，旧数据由独立脚本手动搬迁到 Application Support |
 | 所属版本 | [KNOWN] 待确认 |
 | 业务负责人 | [KNOWN] 待确认 |
 | 研发负责人 | [KNOWN] 待确认 |
@@ -22,6 +22,7 @@
 | [KNOWN] 凭证安全隔离 | [KNOWN] API Key 仅以 AES-256-GCM 密文进入原子设置记录，并按稳定 Provider ID 隔离 | [KNOWN] Hive 中无明文 API Key；不同 Provider 读取不同凭证 |
 | [KNOWN] Draft 后提交 | [KNOWN] 设置页编辑、切换 Provider、测试连接不提前修改全局生效配置 | [KNOWN] 取消不改变配置；保存全部成功后才切换全局状态 |
 | [KNOWN] 字段可清除 | [KNOWN] 空 Base URL/模型表示删除自定义覆盖并恢复 preset | [KNOWN] 保存空字段后重新加载仍为空 |
+| [KNOWN] 私有存储目录 | [KNOWN] Hive 和主密钥统一位于 `Application Support/com.aitrans.aitrans/AITrans` | [KNOWN] App 启动不调用 Documents API；旧 Hive 和历史沙盒主密钥只由显式脚本搬迁 |
 
 ### 范围内
 
@@ -32,6 +33,7 @@
 | [KNOWN] 启动加载 | [KNOWN] `runApp` 前加载当前配置，失败时使用 Ollama 默认配置并保留可诊断状态 | [KNOWN] 当前启动流程已在 `main.dart` 初始化本地依赖 |
 | [KNOWN] 设置页 Draft | [KNOWN] 本地编辑、按 Provider 加载凭证、测试 Draft、保存后更新全局配置 | [KNOWN] 用户确认推荐优化方案 |
 | [KNOWN] 自动化测试 | [KNOWN] 仓储、隔离、清除、取消、保存失败、启动回退 | [KNOWN] 项目测试规则 |
+| [KNOWN] 手动迁移脚本 | [KNOWN] App 关闭后搬迁三个 Hive 文件与可能存在的历史主密钥；冲突时零覆盖退出 | [KNOWN] 用户选择不在 App 内自动探测 Documents |
 
 ### 范围外
 
@@ -42,6 +44,7 @@
 | [KNOWN] 生物识别强制解锁 | [KNOWN] 会改变每次调用的交互与平台最低要求 | [KNOWN] 当前方案不使用生物识别或系统凭证库 |
 | [KNOWN] 多配置档案与账号体系 | [KNOWN] 当前产品只有一个生效 Provider | [KNOWN] 每个 Provider 只保存一个本机凭证 |
 | [KNOWN] 真实厂商连接验证 | [KNOWN] 不读取真实凭证、不调用收费端点 | [KNOWN] 使用 fake 仓储和 fake Provider 测试 |
+| [KNOWN] App 内 Documents 自动迁移 | [KNOWN] 自动探测旧目录本身可能触发系统权限提示 | [KNOWN] 新安装和升级启动均不访问 Documents；迁移只由用户显式运行脚本 |
 
 ## 3. 设计树
 
@@ -67,6 +70,7 @@
 | SET-003 | Draft commit | [KNOWN] 编辑与测试不改变全局配置 | [KNOWN] 本地 Draft | [KNOWN] 保存成功后一次性更新 | [KNOWN] 偏好与认证密文使用单记录原子提交 | [KNOWN] 已确认 |
 | SET-004 | Explicit clear | [KNOWN] Base URL 和模型支持显式清除 | [KNOWN] 空输入 | [KNOWN] `null` 覆盖值 | [KNOWN] 工厂 preset 负责默认值 | [KNOWN] 已确认 |
 | SET-005 | Safe fallback | [KNOWN] 本地设置不可读时应用仍以 Ollama 默认配置启动 | [KNOWN] 存储错误 | [KNOWN] 默认配置 | [KNOWN] 不吞掉设置页后续重试能力 | [KNOWN] 已确认 |
+| SET-006 | Private local storage | [KNOWN] App 只在 Application Support 的 Bundle ID/AITrans 子目录初始化 Hive 和主密钥，不访问 Documents | [KNOWN] App 启动 | [KNOWN] 私有目录中的三个 Hive box | [KNOWN] 旧数据仅由 App 外脚本手动搬迁，目标冲突时禁止覆盖 | [KNOWN] 用户确认 |
 
 ## 5. 高严谨业务系统风险基线
 

@@ -6,6 +6,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('hotkey selection fills input without starting translation', () {
+    final translateController = _RecordingTranslateController();
+    final auxiliaryController = _RecordingAuxiliaryController();
+    final container = ProviderContainer(
+      overrides: [
+        translateControllerProvider.overrideWith((_) => translateController),
+        auxiliaryControllerProvider.overrideWith((_) => auxiliaryController),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container
+        .read(externalTranslationCoordinatorProvider.notifier)
+        .handle(
+          sequence: 1,
+          source: ExternalTranslationSource.macosHotkey,
+          text: 'selected by hotkey',
+        );
+
+    expect(container.read(inputTextProvider), 'selected by hotkey');
+    expect(translateController.translatedTexts, isEmpty);
+  });
+
   test('accepted request replaces input and starts main translation once', () {
     final translateController = _RecordingTranslateController();
     final auxiliaryController = _RecordingAuxiliaryController();

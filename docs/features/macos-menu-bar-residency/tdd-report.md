@@ -9,13 +9,13 @@
 | 建议结论 | [COMPUTED] `LOCAL_VERIFIED` |
 | 最高风险等级 | [COMPUTED] P1 |
 | 模式 | [KNOWN] 本地修改 |
-| 置信度 | [INFERRED] HIGH（95%）；核心行为已由 26 个 Runner XCTest、114 个 Flutter tests、静态分析和真实 Debug 宿主验证；跨应用选区兼容性仍取决于目标应用暴露的 Accessibility 属性 |
+| 置信度 | [INFERRED] HIGH（95%）；核心行为已由 30 个 Runner XCTest、120 个 Flutter tests、静态分析和真实 Debug 构建/启动验证；自动化只使用合成选区，跨应用选区兼容性仍取决于目标应用暴露的 Accessibility 属性 |
 
 ## 2. 测试目标与范围
 
 | 项 | 内容 |
 |---|---|
-| 测试目标 | [KNOWN] 保持既有左键窗口 toggle；右键展示“翻译、设置、退出”；翻译选区优先、剪贴板回退并复用既有主窗口翻译流程；设置打开既有 SettingsSheet；退出终止进程；拒绝 Accessibility 时安全降级 |
+| 测试目标 | [KNOWN] 保持既有左键窗口 toggle；右键展示“翻译、设置、退出”；菜单翻译选区优先、剪贴板回退并复用既有主窗口翻译流程；`⌘⇧T` 打开时先读取并只预填输入；设置打开既有 SettingsSheet；退出终止进程；拒绝 Accessibility 时安全降级 |
 | 测试范围 | [KNOWN] `NSStatusItem` 左右键分流、菜单命令、Accessibility/clipboard resolver、共享翻译序列、原生与 Dart MethodChannel、Flutter 导航/焦点、entitlements、现有生命周期/Service 回归、Debug 安装和真实宿主菜单 |
 | 不覆盖范围 | [KNOWN] iOS/Android 常驻、`LSUIElement`、隐藏 Dock、登录启动、状态栏 popover/历史/第二套 UI、多窗口、Mac App Store 提交和生产环境；真实宿主不读取或发送用户当前剪贴板 |
 
@@ -55,6 +55,9 @@
 | GWT-09 | [KNOWN] 用户选择“翻译”且目标应用有非空 AXSelectedText | [KNOWN] resolver 执行 | [KNOWN] 不读剪贴板；显示主窗口，把 trim 后文本送入既有外部翻译校验和 AI 流程 |
 | GWT-10 | [KNOWN] Accessibility 未授权、无选区或选区为空 | [KNOWN] 用户选择“翻译” | [KNOWN] 回退普通剪贴板；剪贴板也为空时只显示并聚焦翻译输入 |
 | GWT-11 | [KNOWN] 用户选择“设置”或“退出” | [KNOWN] 菜单命令执行 | [KNOWN] 设置显示唯一主窗口中的 SettingsSheet；退出直接终止 AppKit 进程 |
+| GWT-12 | [KNOWN] 用户右键展开状态栏菜单 | [KNOWN] 原生菜单完成布局 | [KNOWN] 最小宽度为 180pt；退出前有分割线；翻译显示独立菜单快捷键 `⌘T`；macOS 11 及以上为三项显示语义系统图标，10.15 保留可操作的文本菜单 |
+| GWT-13 | [KNOWN] AITrans 窗口隐藏且其他应用存在当前选区 | [KNOWN] 用户按 `⌘⇧T` | [KNOWN] 先读取选区，再显示并聚焦主窗口；文本展示在输入框且不自动翻译 |
+| GWT-14 | [KNOWN] AITrans 窗口已显示，或选区读取失败 | [KNOWN] 用户按 `⌘⇧T` | [KNOWN] 显示时只隐藏且不读取；读取失败时仍显示并聚焦窗口 |
 
 ## 5. Mock、数据与断言
 
@@ -104,6 +107,18 @@
 | RG-11 HOST GREEN | [KNOWN] 用规定 Debug 脚本安装后发送真实右键，读取 AITrans 自身 AX 菜单并点击设置/退出 | [KNOWN] stable Debug App | [KNOWN] 菜单文本为“翻译、设置、退出”；设置使主窗口 main/non-minimized；退出后进程不存在；最终重启单进程存活 |
 | RG-12 REVIEW RED | [KNOWN] 提交前发现重复相同命令会复用 canonical const event，先补 distinct-event test | [KNOWN] `application_command_platform_bridge_test.dart` | [KNOWN] 新测试失败：`identical(first, second)` 为 true |
 | RG-12 GREEN | [KNOWN] decoder 每次创建独立事件，确保连续“翻译”或“设置”都能通知 Riverpod | [KNOWN] `application_command_platform_bridge.dart` | [KNOWN] 聚焦 12/12、最终全量 114/114 通过 |
+| RG-13 RED | [KNOWN] 先写菜单 3 倍宽度、退出分割线、翻译快捷键和三项语义图标展示测试 | [KNOWN] `RunnerTests.swift` | [KNOWN] `xcodebuild` 退出 65：缺失 `MenuBarMenuPresentation` 及 command 展示属性；首次沙箱内命令只产生 Xcode 环境错误，不计 RED |
+| RG-13 GREEN | [KNOWN] 使用原生 `NSMenu.minimumWidth=240`、原生 separator、独立 `⌘T` key equivalent 和 macOS 11+ SF Symbols；10.15 自动降级为文本菜单 | [KNOWN] `AppDelegate.swift` | [KNOWN] 聚焦 2/2、最终 28/28 Runner XCTest、114/114 Flutter tests 和 analyze 零问题 |
+| RG-13 REVIEW RED | [KNOWN] 复核发现 `⌘⇧T` 已用于全局显示/隐藏窗口，先把菜单测试改为独立 `⌘T` | [KNOWN] `RunnerTests.swift` | [KNOWN] 聚焦测试失败：实际 modifier 为 Shift+Command，期望 Command |
+| RG-13 REVIEW GREEN | [KNOWN] 移除菜单快捷键的 Shift modifier，保留全局窗口快捷键原语义 | [KNOWN] `AppDelegate.swift` | [KNOWN] 完整 28/28 Runner XCTest 通过 |
+| RG-13 HOST GREEN | [KNOWN] 用规定脚本安装后，仅对 AITrans 状态项发送真实右键并读取自身 AX 菜单 | [KNOWN] stable Debug App | [KNOWN] 最终菜单 AX 名称为“翻译、设置、分割线、退出”，实际尺寸为 240×87；翻译快捷键属性为 `T`、modifier 0（Command）；进程单实例运行 |
+| RG-14 RED | [KNOWN] 用户把最终菜单宽度从 240pt 调整为 180pt，先修改 presentation 宽度断言 | [KNOWN] `RunnerTests.swift` | [KNOWN] 聚焦测试失败：实际 240，期望 180 |
+| RG-14 GREEN | [KNOWN] 把 `NSMenu.minimumWidth` 展示契约改为固定 180pt，并移除已失效的三倍宽度常量 | [KNOWN] `AppDelegate.swift` | [KNOWN] 完整 28/28 Runner XCTest 通过 |
+| RG-14 HOST PARTIAL | [KNOWN] 用规定脚本安装最终构建并向 AITrans 状态项发送真实右键 | [KNOWN] stable Debug App | [KNOWN] AX 读取到“翻译、设置、分割线、退出”，但本轮系统对展开菜单返回尺寸 0×0，因此不把宿主像素尺寸计为通过；180pt 由原生 presentation 测试证明 |
+| RG-15 RED | [KNOWN] 先写快捷键打开顺序、关闭不读取、读取失败仍打开及原生 capture method 测试 | [KNOWN] `hotkey_service_test.dart`, `RunnerTests.swift` | [KNOWN] Dart 缺少 `HotkeyWindowController`，Swift 缺少 `HotkeySelectionCaptureMethodHandler`，两侧编译失败 |
+| RG-15 GREEN | [KNOWN] 增加 Dart toggle coordinator、Dart→Swift capture channel，并复用 AX selected-text/clipboard resolver；读取发生在 show/focus 前 | [KNOWN] `hotkey_service.dart`, `AppDelegate.swift`, `MainFlutterWindow.swift` | [KNOWN] Dart 3/3 与 Runner 聚焦 2/2 通过 |
+| RG-16 RED | [KNOWN] 先写 `macosHotkey` 来源只填入而不自动翻译测试 | [KNOWN] external translation bridge/coordinator tests、`RunnerTests.swift` | [KNOWN] Dart 缺少 `macosHotkey` enum；Swift request 缺少 source，编译失败 |
+| RG-16 GREEN | [KNOWN] 外部请求增加 typed source；Service/菜单保持自动翻译，快捷键来源只更新输入 | [KNOWN] Dart/Swift external translation boundary | [KNOWN] 相关 Dart 12/12 与 Runner 聚焦测试通过 |
 | REFACTOR | [KNOWN] Service、Dock 和 status action 复用 `MainWindowPresenter.shared`；偏好保持独立于 Provider/credential schema | [KNOWN] Swift/Dart 平台边界 | [KNOWN] `flutter analyze` 与全量回归通过 |
 
 ## 7. 修改文件清单
@@ -117,7 +132,7 @@
 | [KNOWN] `macos/Runner/Assets.xcassets/MenuBarIcon.imageset/MenuBarIcon.svg` | [KNOWN] 新增 | [KNOWN] 18×18 单色状态栏 glyph |
 | [KNOWN] `lib/core/platform/menu_bar_preference_service.dart` | [KNOWN] 新增 | [KNOWN] Dart typed service、macOS capability guard 和 Riverpod provider |
 | [KNOWN] `lib/features/settings/ui/settings_page.dart` | [KNOWN] 修改 | [KNOWN] 增加 macOS 状态栏显示开关、loading 防重入和通用错误回退 |
-| [KNOWN] `macos/RunnerTests/RunnerTests.swift` | [KNOWN] 修改 | [KNOWN] 增加菜单、resolver、共享 sequence 和 command buffer 回归；全文件共 26 个测试 |
+| [KNOWN] `macos/RunnerTests/RunnerTests.swift` | [KNOWN] 修改 | [KNOWN] 增加菜单展示、resolver、共享 sequence 和 command buffer 回归；全文件共 28 个测试 |
 | [KNOWN] `lib/core/platform/application_command_platform_bridge.dart` | [KNOWN] 新增 | [KNOWN] 只接受 showTranslation/showSettings 的 typed native-to-Dart bridge |
 | [KNOWN] `lib/features/app/logic/application_command_coordinator.dart` | [KNOWN] 新增 | [KNOWN] macOS-only bridge 生命周期、事件和失败状态 |
 | [KNOWN] `lib/features/translate/logic/translation_input_focus.dart` | [KNOWN] 新增 | [KNOWN] 菜单翻译请求聚焦既有 CommandBar |
@@ -126,22 +141,25 @@
 | [KNOWN] `test/core/platform/menu_bar_preference_service_test.dart` | [KNOWN] 新增 | [KNOWN] 增加 4 个 typed channel/platform guard 测试 |
 | [KNOWN] `test/features/settings/ui/settings_sheet_test.dart` | [KNOWN] 修改 | [KNOWN] 增加 3 个设置开关 Widget 测试并注入 fake service |
 | [KNOWN] `test/features/settings/settings_page_test.dart` | [KNOWN] 修改 | [KNOWN] 注入 unsupported fake，避免测试依赖真实 macOS channel |
+| [KNOWN] `lib/core/platform/hotkey_service.dart`, `MainFlutterWindow.swift` | [KNOWN] 修改 | [KNOWN] 快捷键打开分支在窗口激活前调用 typed native capture channel |
+| [KNOWN] `external_translation_request.dart`, `external_translation_platform_bridge.dart`, `external_translation_coordinator.dart` | [KNOWN] 修改 | [KNOWN] 增加 `macosHotkey` typed source，并与 Service 的自动翻译语义分离 |
+| [KNOWN] `test/core/platform/hotkey_service_test.dart` | [KNOWN] 新增 | [KNOWN] 覆盖打开顺序、关闭不读取和读取失败仍打开 |
 | [KNOWN] `docs/features/macos-menu-bar-residency/tdd-report.md` | [KNOWN] 新增 | [KNOWN] 记录本次 TDD 证据、命令、风险和上下文建议 |
 
 ## 8. 受限命令执行记录
 
 | 命令 | 范围 | 是否执行 | 结果 | 未执行原因 |
 |---|---|---|---|---|
-| [KNOWN] `xcodebuild test -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO` | [KNOWN] Runner XCTest RED/GREEN 与最终回归 | [KNOWN] 是，多轮 | [KNOWN] RED 均命中目标缺失行为；最终退出 0 | [KNOWN] 不适用 |
+| [KNOWN] `xcodebuild test -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO` | [KNOWN] Runner XCTest RED/GREEN 与最终回归 | [KNOWN] 是，多轮 | [KNOWN] RED 均命中目标缺失行为；最终 30 个测试退出 0 | [KNOWN] 不适用 |
 | [KNOWN] `flutter test test/core/platform/menu_bar_preference_service_test.dart` | [KNOWN] Dart channel 聚焦测试 | [KNOWN] 是 | [KNOWN] 最终 4/4 通过 | [KNOWN] 不适用 |
 | [KNOWN] `flutter test test/features/settings/ui/settings_sheet_test.dart` | [KNOWN] 设置页聚焦测试 | [KNOWN] 是 | [KNOWN] 最终 10/10 通过 | [KNOWN] 不适用 |
 | [KNOWN] `flutter analyze` | [KNOWN] 全项目静态分析 | [KNOWN] 是 | [KNOWN] 退出 0，No issues found | [KNOWN] 不适用 |
-| [KNOWN] `flutter test`，含 localhost NO_PROXY | [KNOWN] 全项目 Flutter 回归 | [KNOWN] 是 | [KNOWN] 114/114 通过 | [KNOWN] 不适用 |
+| [KNOWN] `flutter test`，含 localhost NO_PROXY | [KNOWN] 全项目 Flutter 回归 | [KNOWN] 是 | [KNOWN] 120/120 通过 | [KNOWN] 不适用 |
 | [KNOWN] `dart format --output=none --set-exit-if-changed lib test` | [KNOWN] 全项目格式基线 | [KNOWN] 是 | [KNOWN] 退出 1：本次文件修正后，仍有两个无关既有文件 `lib/features/translate/ui/translate_page.dart`、`lib/main.dart` 不符合 formatter | [KNOWN] 按规则保留用户既有改动，不扩大修改范围 |
 | [KNOWN] 对本次 7 个 Dart 文件执行 `dart format` | [KNOWN] 本次变更格式 | [KNOWN] 是 | [KNOWN] 退出 0 | [KNOWN] 不适用 |
 | [KNOWN] `git diff --check` | [KNOWN] 变更空白检查 | [KNOWN] 是 | [KNOWN] 退出 0 | [KNOWN] 不适用 |
-| [KNOWN] `zsh scripts/run_macos_debug.sh` | [KNOWN] 规定的关闭、构建、稳定安装、Service 注册、启动、单进程和存活检查 | [KNOWN] 累计八次 | [KNOWN] 八次退出 0；最终运行 PID 87703 | [KNOWN] 不适用 |
-| [KNOWN] 仅针对 AITrans 的 AX/CGEvent 宿主验证 | [KNOWN] 真实右键菜单、设置和显式退出 | [KNOWN] 是 | [KNOWN] 菜单为“翻译、设置、退出”；设置后 AXMain=true/AXMinimized=false；Quit 后进程不存在 | [KNOWN] 为避免发送用户剪贴板，真实“翻译”未点击，由隔离测试覆盖 |
+| [KNOWN] `zsh scripts/run_macos_debug.sh` | [KNOWN] 规定的关闭、构建、稳定安装、Service 注册、启动、单进程和存活检查 | [KNOWN] 历史八次加本轮重建 | [KNOWN] 2026-07-17 本轮退出 0，启动单实例 PID 34453 | [KNOWN] 不读取真实用户选区，实际内容由用户手工验收 |
+| [KNOWN] 仅针对 AITrans 的 AX/CGEvent 宿主验证 | [KNOWN] 真实右键菜单、尺寸、快捷键、设置和显式退出 | [KNOWN] 部分 | [KNOWN] 最终菜单项目为“翻译、设置、分割线、退出”；本轮 AX 尺寸返回 0×0，未取得 180px 宿主尺寸证据；既有 240pt 版本曾返回 240×87，设置/退出行为也已验证 | [KNOWN] 180pt 宽度由 Runner presentation 测试覆盖；真实“翻译”仍未点击，避免发送用户剪贴板 |
 | [KNOWN] `codesign -d --entitlements` | [KNOWN] 已安装 Debug App 权限核对 | [KNOWN] 是 | [KNOWN] 签名中无 `com.apple.security.app-sandbox`，保留 Debug JIT/network/get-task-allow | [KNOWN] 不适用 |
 
 ## 9. 风险与待确认问题

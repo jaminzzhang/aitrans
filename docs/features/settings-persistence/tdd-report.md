@@ -44,6 +44,8 @@
 | GWT-3 | [KNOWN] Ollama 是当前生效配置 | [KNOWN] Draft 切换 Qwen | [KNOWN] 全局状态仍是 Ollama且 Draft 加载 Qwen 凭证 |
 | GWT-4 | [KNOWN] Draft 持久化失败 | [KNOWN] 点击保存 | [KNOWN] 页面保留、全局状态不变并显示脱敏错误 |
 | GWT-5 | [KNOWN] 旧自定义 endpoint/model 存在 | [KNOWN] 保存空字段 | [KNOWN] 重载后字段为 null，Provider preset 生效 |
+| GWT-6 | [KNOWN] App 在非沙盒 macOS 启动 | [KNOWN] 初始化本地存储 | [KNOWN] Hive 只使用 `Application Support/com.aitrans.aitrans/AITrans`，不访问 Documents |
+| GWT-7 | [KNOWN] App 已退出且旧 Hive/主密钥存在 | [KNOWN] 用户运行独立迁移脚本 | [KNOWN] 文件搬到新私有目录；锁文件不搬迁；任一目标冲突时零覆盖退出 |
 
 ## 5. Mock、数据与断言
 
@@ -74,6 +76,9 @@
 | RED-S7 | [KNOWN] Provider 凭证加载期间保存按钮仍可点击 | settings widget test | [KNOWN] 失败，复现误删除竞态 |
 | GREEN-S7 | [KNOWN] generation、loading、dirty 与 Draft cache 保护异步切换 | settings UI | [KNOWN] 设置页测试通过 |
 | REFACTOR-S8 | [KNOWN] 偏好与认证密文改为单一版本化状态记录一次提交 | repository/security | [KNOWN] 原子状态与失败保留旧值测试通过 |
+| RED-S9 | [KNOWN] 新测试引用不存在的 Application Support 引导器与迁移脚本 | local storage tests | [KNOWN] Dart 编译失败，脚本退出 127 |
+| GREEN-S9 | [KNOWN] App 改用 Bundle ID 下的 `AITrans` 私有目录；脚本支持 Hive、非沙盒/历史沙盒主密钥搬迁、冲突预检和失败回滚 | bootstrap、main、migration script | [KNOWN] 聚焦测试和脚本测试通过；完整 Flutter 运行通过前 113 项后工具截断，末尾 Widget 文件单独 8/8 通过；analyze 零问题 |
+| HOST-S9 | [KNOWN] 正常退出旧 App，手动搬迁并用规定脚本重建启动 | stable Debug App | [KNOWN] 单一 PID 18042；新目录存在三个 Hive、三个锁文件与主密钥；Documents 未重新生成指定 Hive 文件 |
 
 ## 7. 修改文件清单
 
@@ -84,6 +89,9 @@
 | `lib/core/config/settings_repository.dart` | [KNOWN] 新增 | [KNOWN] 组合设置仓储与不可用回退 |
 | `lib/core/security/` | [KNOWN] 新增/重构 | [KNOWN] Provider credential boundary、本地主密钥和 AES-GCM adapter |
 | `lib/main.dart` | [KNOWN] 修改 | [KNOWN] 启动加载并注入初始配置/repository |
+| `lib/core/platform/local_storage_bootstrap.dart` | [KNOWN] 新增 | [KNOWN] 在 `getApplicationSupportDirectory()/AITrans` 创建目录并初始化 Hive |
+| `scripts/migrate_macos_hive_to_application_support.sh` | [KNOWN] 新增 | [KNOWN] App 外手动搬迁 Hive 和历史主密钥，冲突零覆盖并支持失败回滚 |
+| `test/core/platform/local_storage_bootstrap_test.dart`, `test/scripts/migrate_macos_hive_to_application_support_test.sh` | [KNOWN] 新增 | [KNOWN] 私有路径、默认 Bundle ID 路径、Hive/沙盒主密钥搬迁和冲突测试 |
 | `lib/features/settings/ui/settings_page.dart` | [KNOWN] 修改 | [KNOWN] Draft、异步保存、清除和错误状态 |
 | `lib/features/translate/logic/translate_controller.dart` | [KNOWN] 修改 | [KNOWN] 初始配置和 repository providers |
 | `pubspec.yaml`, `pubspec.lock` | [KNOWN] 修改 | [KNOWN] `cryptography` 与 `path_provider`；移除 `flutter_secure_storage` |

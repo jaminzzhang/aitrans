@@ -134,6 +134,25 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(MenuBarCommand.allCases.map(\.title), ["翻译", "设置", "退出"])
   }
 
+  func testMenuBarPresentationUsesTheRequestedWidthAndSeparatesQuit() {
+    XCTAssertEqual(MenuBarMenuPresentation.minimumWidth, 180)
+    XCTAssertEqual(
+      MenuBarMenuPresentation.elements,
+      [.command(.translate), .command(.settings), .separator, .command(.quit)]
+    )
+  }
+
+  func testTranslateMenuCommandUsesADedicatedShortcutAndSemanticIcon() {
+    XCTAssertEqual(MenuBarCommand.translate.keyEquivalent, "t")
+    XCTAssertEqual(
+      MenuBarCommand.translate.keyEquivalentModifierMask,
+      [.command]
+    )
+    XCTAssertEqual(MenuBarCommand.translate.systemImageName, "character.bubble")
+    XCTAssertEqual(MenuBarCommand.settings.systemImageName, "gearshape")
+    XCTAssertEqual(MenuBarCommand.quit.systemImageName, "power")
+  }
+
   func testMenuBarTranslationTextResolverPrefersSelectionThenFallsBackToClipboard() {
     var selectedText: String? = " selected text "
     var clipboardReadCount = 0
@@ -151,6 +170,38 @@ class RunnerTests: XCTestCase {
     selectedText = "  \n"
     XCTAssertEqual(resolver.resolve(), "clipboard text")
     XCTAssertEqual(clipboardReadCount, 1)
+  }
+
+  func testHotkeySelectionCaptureMethodForwardsResolvedText() throws {
+    var requests: [NativeExternalTranslationRequest] = []
+    let requestFactory = ExternalTranslationRequestFactory()
+    let handler = HotkeySelectionCaptureMethodHandler(
+      resolveText: { "selected by hotkey" },
+      requestFactory: requestFactory,
+      onRequest: { requests.append($0) }
+    )
+
+    XCTAssertEqual(
+      try handler.handle(method: "captureSelection", arguments: nil) as? Bool,
+      true
+    )
+    XCTAssertEqual(requests.map(\.text), ["selected by hotkey"])
+    XCTAssertEqual(requests.map(\.source), [.macosHotkey])
+  }
+
+  func testHotkeySelectionCaptureMethodReturnsFalseWithoutReadableText() throws {
+    var requestCount = 0
+    let handler = HotkeySelectionCaptureMethodHandler(
+      resolveText: { nil },
+      requestFactory: ExternalTranslationRequestFactory(),
+      onRequest: { _ in requestCount += 1 }
+    )
+
+    XCTAssertEqual(
+      try handler.handle(method: "captureSelection", arguments: nil) as? Bool,
+      false
+    )
+    XCTAssertEqual(requestCount, 0)
   }
 
   func testMenuBarTranslationCoordinatorAlwaysOpensTranslationAndForwardsResolvedText() {

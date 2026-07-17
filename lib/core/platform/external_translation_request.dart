@@ -1,6 +1,6 @@
 import '../config/external_translation_config.dart';
 
-enum ExternalTranslationSource { macosService }
+enum ExternalTranslationSource { macosService, macosHotkey }
 
 final class ExternalTranslationRequest {
   final int sequence;
