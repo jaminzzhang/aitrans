@@ -145,6 +145,28 @@ class AppSpacing {
   static const double xxl = 56;
 }
 
+/// 响应式布局断点。
+class AppBreakpoints {
+  AppBreakpoints._();
+
+  /// 手机与窄窗口使用单栏、全屏设置等紧凑布局。
+  static const double compact = 600;
+}
+
+/// 可交互控件的最小触控尺寸。
+class AppTouchTargets {
+  AppTouchTargets._();
+
+  /// 同时满足 iOS 44pt 与 Android 48dp 建议的统一移动端基线。
+  static const double mobile = 48;
+}
+
+extension AppTargetPlatform on TargetPlatform {
+  /// iOS 与 Android 共用移动端信息架构和触控基线。
+  bool get isMobile =>
+      this == TargetPlatform.iOS || this == TargetPlatform.android;
+}
+
 /// 尺寸相关的排版样式。
 ///
 /// 大字给负字距、紧行高；小字给正字距。绝不全局统一 letter-spacing。

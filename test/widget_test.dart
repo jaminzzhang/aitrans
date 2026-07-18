@@ -2,9 +2,11 @@ import 'package:aitrans/app.dart';
 import 'package:aitrans/core/ai/ai_provider.dart';
 import 'package:aitrans/core/platform/external_translation_request.dart';
 import 'package:aitrans/core/platform/application_command_platform_bridge.dart';
+import 'package:aitrans/core/platform/menu_bar_preference_service.dart';
 import 'package:aitrans/features/app/logic/application_command_coordinator.dart';
 import 'package:aitrans/features/translate/logic/external_translation_coordinator.dart';
 import 'package:aitrans/features/translate/logic/translate_controller.dart';
+import 'package:aitrans/shared/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -43,7 +45,131 @@ class _RecordingAIProvider extends _NullAIProvider {
   }
 }
 
+class _UnsupportedMenuBarPreferenceService implements MenuBarPreferenceService {
+  @override
+  bool get isSupported => false;
+
+  @override
+  Future<bool> getVisibility() => throw UnsupportedError('not supported');
+
+  @override
+  Future<void> setVisibility(bool visible) =>
+      throw UnsupportedError('not supported');
+}
+
+Future<void> _pumpMobileApp(
+  WidgetTester tester, {
+  Size size = const Size(320, 568),
+  FakeViewPadding viewPadding = FakeViewPadding.zero,
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  tester.view.padding = viewPadding;
+  tester.view.viewPadding = viewPadding;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.resetPadding);
+  addTearDown(tester.view.resetViewInsets);
+  addTearDown(tester.view.resetViewPadding);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        aiProviderProvider.overrideWith((_) => _NullAIProvider()),
+        menuBarPreferenceServiceProvider.overrideWithValue(
+          _UnsupportedMenuBarPreferenceService(),
+        ),
+      ],
+      child: MaterialApp(
+        theme: AppTheme.light().copyWith(platform: TargetPlatform.iOS),
+        home: const AppShell(),
+      ),
+    ),
+  );
+  await tester.pump();
+}
+
 void main() {
+  testWidgets('iPhone content clears the status area without auto focusing', (
+    tester,
+  ) async {
+    await _pumpMobileApp(
+      tester,
+      size: const Size(393, 852),
+      viewPadding: const FakeViewPadding(top: 59, bottom: 34),
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField).first);
+    expect(tester.getTopLeft(find.byType(TextField).first).dy, greaterThan(59));
+    expect(field.focusNode?.hasFocus, isFalse);
+  });
+
+  testWidgets('iPhone 320px viewport keeps primary actions usable', (
+    tester,
+  ) async {
+    await _pumpMobileApp(tester);
+
+    expect(find.byKey(const ValueKey('mobile-app-shell')), findsOneWidget);
+    expect(find.text('输入要翻译的文本…'), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings-button')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('translate-action'))).height,
+      greaterThanOrEqualTo(48),
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('source-language-button')))
+          .height,
+      greaterThanOrEqualTo(48),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile settings is full width and omits macOS shortcuts', (
+    tester,
+  ) async {
+    await _pumpMobileApp(tester, size: const Size(390, 844));
+
+    await tester.tap(find.byKey(const ValueKey('settings-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('settings-sheet-surface')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('settings-sheet-surface')))
+          .width,
+      390,
+    );
+    expect(find.text('快捷键'), findsNothing);
+    expect(find.text('唤起 / 隐藏窗口'), findsNothing);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('close-settings-button')))
+          .height,
+      greaterThanOrEqualTo(48),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'mobile settings remains scrollable above the software keyboard',
+    (tester) async {
+      await _pumpMobileApp(tester, size: const Size(390, 700));
+      await tester.tap(find.byKey(const ValueKey('settings-button')));
+      await tester.pumpAndSettle();
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView).last, const Offset(0, -500));
+      await tester.pumpAndSettle();
+
+      expect(find.text('AITrans v1.0.0'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('App launches and renders AppShell with command bar', (
     tester,
   ) async {
@@ -164,7 +290,9 @@ void main() {
           text: 'selected text',
         );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    // 翻译 Loading 指示器会持续调度帧，不能使用 pumpAndSettle；只等待
+    // fullscreenDialog 的退场动画完成。
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('设置'), findsNothing);
     expect(find.text('selected text'), findsOneWidget);

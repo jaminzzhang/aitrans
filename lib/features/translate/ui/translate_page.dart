@@ -11,14 +11,13 @@ class TranslatePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        0,
-        AppSpacing.lg,
-        0,
-      ),
-      child: Column(
+    final isCompact =
+        Theme.of(context).platform.isMobile ||
+        MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
+    final horizontalPadding = isCompact ? AppSpacing.md : AppSpacing.lg;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 0),
+      child: const Column(
         children: [
           CommandBar(),
           SizedBox(height: AppSpacing.sm),

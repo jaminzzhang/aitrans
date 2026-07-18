@@ -21,6 +21,10 @@ class ResultDocument extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final translateState = ref.watch(translateControllerProvider);
     final auxiliary = ref.watch(auxiliaryControllerProvider);
+    final isCompact =
+        Theme.of(context).platform.isMobile ||
+        MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
+    final horizontalPadding = isCompact ? AppSpacing.md : AppSpacing.lg;
 
     // scroll-edge 渐隐：内容滚到顶部时在边缘淡出，取代硬分割线。
     // 调淡到几乎不可见，避免破坏暖纸纯净感。
@@ -42,28 +46,30 @@ class ResultDocument extends ConsumerWidget {
             SliverFillRemaining(
               hasScrollBody: false,
               child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.xlg),
+                padding: EdgeInsets.all(
+                  isCompact ? AppSpacing.md : AppSpacing.xlg,
+                ),
                 child: HeroTranslation(state: translateState),
               ),
             )
           else ...[
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.xl,
-                  AppSpacing.lg,
-                  AppSpacing.xxl,
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  isCompact ? AppSpacing.md : AppSpacing.xl,
+                  horizontalPadding,
+                  isCompact ? AppSpacing.xl : AppSpacing.xxl,
                 ),
                 child: HeroTranslation(state: translateState),
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
                 0,
-                AppSpacing.lg,
-                AppSpacing.xxl,
+                horizontalPadding,
+                isCompact ? AppSpacing.xl : AppSpacing.xxl,
               ),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([

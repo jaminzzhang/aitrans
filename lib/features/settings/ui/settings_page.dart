@@ -290,199 +290,231 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
     final storageError = ref.watch(settingsStorageErrorProvider);
+    final isMobile = Theme.of(context).platform.isMobile;
+    final isCompact =
+        isMobile || MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
-    return Center(
-      child: Container(
-        width: 440,
-        constraints: const BoxConstraints(maxHeight: 640),
-        decoration: BoxDecoration(
-          color: palette.surface,
-          borderRadius: BorderRadius.circular(AppRadii.lg),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadii.lg),
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              _Header(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.sm,
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _SectionLabel(text: 'AI 服务'),
-                    const SizedBox(height: AppSpacing.sm),
-                    _ProviderDropdown(
-                      selected: _selectedProvider,
-                      onSelect: _selectProvider,
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: isCompact ? keyboardInset : 0),
+      child: SafeArea(
+        child: Center(
+          child: Container(
+            key: const ValueKey('settings-sheet-surface'),
+            width: isCompact ? double.infinity : 440,
+            height: isCompact ? double.infinity : null,
+            constraints: isCompact
+                ? const BoxConstraints()
+                : const BoxConstraints(maxHeight: 640),
+            decoration: BoxDecoration(
+              color: palette.surface,
+              borderRadius: BorderRadius.circular(isCompact ? 0 : AppRadii.lg),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(isCompact ? 0 : AppRadii.lg),
+              child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.zero,
+                children: [
+                  _Header(),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      isCompact ? AppSpacing.md : AppSpacing.lg,
+                      AppSpacing.sm,
+                      isCompact ? AppSpacing.md : AppSpacing.lg,
+                      AppSpacing.lg,
                     ),
-                    const SizedBox(height: AppSpacing.lg),
-
-                    _SectionLabel(text: 'API 配置'),
-                    const SizedBox(height: AppSpacing.sm),
-                    if (storageError != null) ...[
-                      Container(
-                        padding: const EdgeInsets.all(AppSpacing.sm),
-                        decoration: BoxDecoration(
-                          color: palette.error.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(AppRadii.sm),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                storageError,
-                                style: AppTypography.caption(
-                                  base.labelSmall!,
-                                ).copyWith(color: palette.error),
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: _isResettingCredentials
-                                  ? null
-                                  : _resetCredentials,
-                              child: const Text('重置凭证'),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                    ],
-                    _Field(
-                      controller: _apiKeyController,
-                      label: 'API Key',
-                      hint: '输入你的 API Key',
-                      obscure: true,
-                      onChanged: (_) {
-                        if (_isLoadingProvider) {
-                          _credentialEditedWhileLoading = true;
-                        }
-                      },
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    _Field(
-                      controller: _baseUrlController,
-                      label: 'Base URL（可选）',
-                      hint: _defaultHint(_selectedProvider, (c) => c.baseUrl),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    _Field(
-                      controller: _modelController,
-                      label: '模型（可选）',
-                      hint: _defaultHint(_selectedProvider, (c) => c.model),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-
-                    Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: _SecondaryButton(
-                            label: '测试连接',
-                            loading: _isTestingConnection,
-                            onTap: _isTestingConnection || _isLoadingProvider
-                                ? null
-                                : _testConnection,
-                          ),
+                        _SectionLabel(text: 'AI 服务'),
+                        const SizedBox(height: AppSpacing.sm),
+                        _ProviderDropdown(
+                          selected: _selectedProvider,
+                          onSelect: _selectProvider,
                         ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: _PrimaryButton(
-                            label: _isSaving ? '保存中…' : '保存',
-                            onTap: _isSaving || _isLoadingProvider
-                                ? null
-                                : _save,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_connectionStatus != null) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(
-                        _connectionStatus!,
-                        style: AppTypography.caption(base.labelSmall!).copyWith(
-                          color: _connectionOk
-                              ? palette.success
-                              : palette.error,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: AppSpacing.xl),
+                        const SizedBox(height: AppSpacing.lg),
 
-                    if (_menuBarPreferenceService.isSupported) ...[
-                      _SectionLabel(text: 'macOS'),
-                      const SizedBox(height: AppSpacing.sm),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                        _SectionLabel(text: 'API 配置'),
+                        const SizedBox(height: AppSpacing.sm),
+                        if (storageError != null) ...[
+                          Container(
+                            padding: const EdgeInsets.all(AppSpacing.sm),
+                            decoration: BoxDecoration(
+                              color: palette.error.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(AppRadii.sm),
+                            ),
+                            child: Row(
                               children: [
-                                Text(
-                                  '在状态栏显示 AITrans',
-                                  style: AppTypography.bodyMuted(
-                                    base.bodyMedium!,
-                                  ).copyWith(color: palette.inkPrimary),
+                                Expanded(
+                                  child: Text(
+                                    storageError,
+                                    style: AppTypography.caption(
+                                      base.labelSmall!,
+                                    ).copyWith(color: palette.error),
+                                  ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '关闭主窗口后，可从状态栏重新打开',
-                                  style: AppTypography.caption(
-                                    base.labelSmall!,
-                                  ).copyWith(color: palette.inkTertiary),
+                                TextButton(
+                                  onPressed: _isResettingCredentials
+                                      ? null
+                                      : _resetCredentials,
+                                  child: const Text('重置凭证'),
                                 ),
                               ],
                             ),
                           ),
-                          Material(
-                            color: Colors.transparent,
-                            child: Switch(
-                              key: const ValueKey('menu-bar-visibility-switch'),
-                              value: _menuBarVisible ?? false,
-                              onChanged:
-                                  _menuBarVisible == null ||
-                                      _isChangingMenuBarVisibility
-                                  ? null
-                                  : _setMenuBarVisibility,
+                          const SizedBox(height: AppSpacing.sm),
+                        ],
+                        _Field(
+                          controller: _apiKeyController,
+                          label: 'API Key',
+                          hint: '输入你的 API Key',
+                          obscure: true,
+                          onChanged: (_) {
+                            if (_isLoadingProvider) {
+                              _credentialEditedWhileLoading = true;
+                            }
+                          },
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        _Field(
+                          controller: _baseUrlController,
+                          label: 'Base URL（可选）',
+                          hint: _defaultHint(
+                            _selectedProvider,
+                            (c) => c.baseUrl,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        _Field(
+                          controller: _modelController,
+                          label: '模型（可选）',
+                          hint: _defaultHint(_selectedProvider, (c) => c.model),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _SecondaryButton(
+                                label: '测试连接',
+                                loading: _isTestingConnection,
+                                onTap:
+                                    _isTestingConnection || _isLoadingProvider
+                                    ? null
+                                    : _testConnection,
+                              ),
                             ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: _PrimaryButton(
+                                label: _isSaving ? '保存中…' : '保存',
+                                onTap: _isSaving || _isLoadingProvider
+                                    ? null
+                                    : _save,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_connectionStatus != null) ...[
+                          const SizedBox(height: AppSpacing.sm),
+                          Text(
+                            _connectionStatus!,
+                            style: AppTypography.caption(base.labelSmall!)
+                                .copyWith(
+                                  color: _connectionOk
+                                      ? palette.success
+                                      : palette.error,
+                                ),
                           ),
                         ],
-                      ),
-                      if (_menuBarVisibilityError != null) ...[
-                        const SizedBox(height: AppSpacing.xs),
+                        const SizedBox(height: AppSpacing.xl),
+
+                        if (_menuBarPreferenceService.isSupported) ...[
+                          _SectionLabel(text: 'macOS'),
+                          const SizedBox(height: AppSpacing.sm),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '在状态栏显示 AITrans',
+                                      style: AppTypography.bodyMuted(
+                                        base.bodyMedium!,
+                                      ).copyWith(color: palette.inkPrimary),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '关闭主窗口后，可从状态栏重新打开',
+                                      style: AppTypography.caption(
+                                        base.labelSmall!,
+                                      ).copyWith(color: palette.inkTertiary),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Material(
+                                color: Colors.transparent,
+                                child: Switch(
+                                  key: const ValueKey(
+                                    'menu-bar-visibility-switch',
+                                  ),
+                                  value: _menuBarVisible ?? false,
+                                  onChanged:
+                                      _menuBarVisible == null ||
+                                          _isChangingMenuBarVisibility
+                                      ? null
+                                      : _setMenuBarVisibility,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_menuBarVisibilityError != null) ...[
+                            const SizedBox(height: AppSpacing.xs),
+                            Text(
+                              _menuBarVisibilityError!,
+                              style: AppTypography.caption(
+                                base.labelSmall!,
+                              ).copyWith(color: palette.error),
+                            ),
+                          ],
+                          const SizedBox(height: AppSpacing.xl),
+                        ],
+
+                        if (!isCompact) ...[
+                          _SectionLabel(text: '快捷键'),
+                          const SizedBox(height: AppSpacing.sm),
+                          const _ShortcutRow(
+                            shortcut: '⌘⇧T',
+                            description: '唤起 / 隐藏窗口',
+                          ),
+                          const _ShortcutRow(
+                            shortcut: '↩',
+                            description: '立即翻译',
+                          ),
+                          const _ShortcutRow(
+                            shortcut: '⌘K',
+                            description: '清空输入',
+                          ),
+                          const SizedBox(height: AppSpacing.lg),
+                        ],
                         Text(
-                          _menuBarVisibilityError!,
+                          'AITrans v1.0.0',
                           style: AppTypography.caption(
                             base.labelSmall!,
-                          ).copyWith(color: palette.error),
+                          ).copyWith(color: palette.inkTertiary),
                         ),
                       ],
-                      const SizedBox(height: AppSpacing.xl),
-                    ],
-
-                    _SectionLabel(text: '快捷键'),
-                    const SizedBox(height: AppSpacing.sm),
-                    const _ShortcutRow(
-                      shortcut: '⌘⇧T',
-                      description: '唤起 / 隐藏窗口',
                     ),
-                    const _ShortcutRow(shortcut: '↩', description: '立即翻译'),
-                    const _ShortcutRow(shortcut: '⌘K', description: '清空输入'),
-                    const SizedBox(height: AppSpacing.lg),
-                    Text(
-                      'AITrans v1.0.0',
-                      style: AppTypography.caption(
-                        base.labelSmall!,
-                      ).copyWith(color: palette.inkTertiary),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -512,8 +544,13 @@ class _Header extends StatelessWidget {
           ),
           const Spacer(),
           IconButton(
+            key: const ValueKey('close-settings-button'),
             icon: Icon(Icons.close, size: 18, color: palette.inkTertiary),
             onPressed: () => Navigator.of(context).maybePop(),
+            constraints: const BoxConstraints.tightFor(
+              width: AppTouchTargets.mobile,
+              height: AppTouchTargets.mobile,
+            ),
             splashColor: Colors.transparent,
             highlightColor: Colors.transparent,
           ),
@@ -615,6 +652,9 @@ class _FieldState extends State<_Field> {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
     final obscure = widget.obscure && !_show;
+    final isCompact =
+        Theme.of(context).platform.isMobile ||
+        MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
     return Material(
       color: palette.surfaceElevated.withValues(alpha: 0.5),
       borderRadius: BorderRadius.circular(AppRadii.sm),
@@ -664,8 +704,13 @@ class _FieldState extends State<_Field> {
                 onPressed: () => setState(() => _show = !_show),
                 splashColor: Colors.transparent,
                 highlightColor: Colors.transparent,
-                constraints: const BoxConstraints(),
-                padding: const EdgeInsets.all(4),
+                constraints: isCompact
+                    ? const BoxConstraints.tightFor(
+                        width: AppTouchTargets.mobile,
+                        height: AppTouchTargets.mobile,
+                      )
+                    : const BoxConstraints(),
+                padding: EdgeInsets.all(isCompact ? AppSpacing.sm : 4),
               ),
           ],
         ),
@@ -690,6 +735,7 @@ class _PrimaryButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadii.sm),
         child: Container(
+          constraints: const BoxConstraints(minHeight: AppTouchTargets.mobile),
           padding: const EdgeInsets.symmetric(vertical: 10),
           alignment: Alignment.center,
           child: Text(
@@ -727,6 +773,7 @@ class _SecondaryButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadii.sm),
         child: Container(
+          constraints: const BoxConstraints(minHeight: AppTouchTargets.mobile),
           padding: const EdgeInsets.symmetric(vertical: 10),
           alignment: Alignment.center,
           child: loading

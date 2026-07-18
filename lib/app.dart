@@ -90,13 +90,22 @@ class AppShell extends ConsumerWidget {
         }
       },
     );
-    return const Scaffold(
-      body: Column(
-        children: [
-          _TitleBar(),
-          Expanded(child: TranslatePage()),
-          _BottomToolBar(),
-        ],
+    final platform = Theme.of(context).platform;
+    final isMacOS = platform == TargetPlatform.macOS;
+    final isMobile = platform.isMobile;
+    return Scaffold(
+      key: ValueKey(isMobile ? 'mobile-app-shell' : 'desktop-app-shell'),
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        top: isMobile,
+        bottom: false,
+        child: Column(
+          children: [
+            if (isMacOS) const _TitleBar(),
+            const Expanded(child: TranslatePage()),
+            const _BottomToolBar(),
+          ],
+        ),
       ),
     );
   }
@@ -155,14 +164,17 @@ class _BottomToolBar extends ConsumerWidget {
     final sourceLanguage = ref.watch(sourceLanguageProvider);
     final targetLanguage = ref.watch(targetLanguageProvider);
     final palette = AppColors.of(Theme.of(context).brightness);
+    final isCompact =
+        Theme.of(context).platform.isMobile ||
+        MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
 
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
+        padding: EdgeInsets.fromLTRB(
+          isCompact ? AppSpacing.sm + 2 : AppSpacing.md,
           AppSpacing.sm,
-          AppSpacing.lg,
+          isCompact ? AppSpacing.sm + 2 : AppSpacing.md,
           AppSpacing.md,
         ),
         child: Center(
@@ -183,15 +195,17 @@ class _BottomToolBar extends ConsumerWidget {
                 ],
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.sm + 2,
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? AppSpacing.sm : AppSpacing.sm + 2,
                   vertical: AppSpacing.xs + 1,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _LanguageButton(
+                      key: const ValueKey('source-language-button'),
                       language: sourceLanguage,
+                      isCompact: isCompact,
                       onPressed: () => _showLanguageSelector(
                         context,
                         ref,
@@ -200,17 +214,27 @@ class _BottomToolBar extends ConsumerWidget {
                       ),
                     ),
                     IconButton(
+                      key: const ValueKey('swap-language-button'),
                       icon: const Icon(Icons.swap_horiz_rounded, size: 16),
                       tooltip: '交换语言',
                       onPressed: sourceLanguage == Languages.auto
                           ? null
                           : () => _swapLanguages(ref),
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      constraints: const BoxConstraints(),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isCompact ? AppSpacing.sm : 2,
+                      ),
+                      constraints: isCompact
+                          ? const BoxConstraints.tightFor(
+                              width: AppTouchTargets.mobile,
+                              height: AppTouchTargets.mobile,
+                            )
+                          : const BoxConstraints(),
                       color: palette.inkTertiary,
                     ),
                     _LanguageButton(
+                      key: const ValueKey('target-language-button'),
                       language: targetLanguage,
+                      isCompact: isCompact,
                       onPressed: () => _showLanguageSelector(
                         context,
                         ref,
@@ -227,7 +251,7 @@ class _BottomToolBar extends ConsumerWidget {
                       ),
                       color: palette.divider,
                     ),
-                    const _SettingsIconButton(),
+                    _SettingsIconButton(isCompact: isCompact),
                   ],
                 ),
               ),
@@ -326,8 +350,14 @@ class _BottomToolBar extends ConsumerWidget {
 class _LanguageButton extends StatelessWidget {
   final Language language;
   final VoidCallback onPressed;
+  final bool isCompact;
 
-  const _LanguageButton({required this.language, required this.onPressed});
+  const _LanguageButton({
+    super.key,
+    required this.language,
+    required this.onPressed,
+    required this.isCompact,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -350,15 +380,19 @@ class _LanguageButton extends StatelessWidget {
       ),
       style: TextButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 6),
-        minimumSize: const Size(0, 30),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        minimumSize: Size(0, isCompact ? AppTouchTargets.mobile : 30),
+        tapTargetSize: isCompact
+            ? MaterialTapTargetSize.padded
+            : MaterialTapTargetSize.shrinkWrap,
       ),
     );
   }
 }
 
 class _SettingsIconButton extends StatelessWidget {
-  const _SettingsIconButton();
+  final bool isCompact;
+
+  const _SettingsIconButton({required this.isCompact});
 
   @override
   Widget build(BuildContext context) {
@@ -366,12 +400,19 @@ class _SettingsIconButton extends StatelessWidget {
     return Tooltip(
       message: '设置',
       child: IconButton(
+        key: const ValueKey('settings-button'),
         icon: Icon(
           Icons.settings_outlined,
           size: 20,
           color: palette.inkTertiary,
         ),
         onPressed: () => showAITransSettingsDialog(context),
+        constraints: isCompact
+            ? const BoxConstraints.tightFor(
+                width: AppTouchTargets.mobile,
+                height: AppTouchTargets.mobile,
+              )
+            : null,
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
       ),
@@ -379,9 +420,21 @@ class _SettingsIconButton extends StatelessWidget {
   }
 }
 
-void showAITransSettingsDialog(BuildContext context) {
-  // 带 scrim 变暗的居中浮层。
-  showDialog<void>(
+Future<void> showAITransSettingsDialog(BuildContext context) {
+  final isMobile = Theme.of(context).platform.isMobile;
+  final isCompact =
+      isMobile || MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
+  if (isCompact) {
+    return Navigator.of(context, rootNavigator: true).push<void>(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => const Material(child: SettingsSheet()),
+      ),
+    );
+  }
+
+  // 桌面保留带 scrim 变暗的居中浮层。
+  return showDialog<void>(
     context: context,
     barrierColor: AppColors.of(Theme.of(context).brightness).scrim,
     builder: (_) => const SettingsSheet(),

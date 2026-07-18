@@ -1,5 +1,6 @@
-import 'dart:ui';
 import 'dart:io';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,7 +29,9 @@ class _CommandBarState extends ConsumerState<CommandBar> {
     super.initState();
     _focusNode = FocusNode(onKeyEvent: _handleKeyEvent);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focusNode.requestFocus();
+      if (mounted && !Theme.of(context).platform.isMobile) {
+        _focusNode.requestFocus();
+      }
     });
   }
 
@@ -110,6 +113,10 @@ class _CommandBarState extends ConsumerState<CommandBar> {
     _syncExternalInput(inputText);
     // Android 退化：BackdropFilter 在低端机掉帧，改纯色 + 亮边。
     final useBlur = !Platform.isAndroid;
+    final width = MediaQuery.sizeOf(context).width;
+    final isCompact =
+        Theme.of(context).platform.isMobile || width < AppBreakpoints.compact;
+    final isNarrowPhone = isCompact && width < 360;
 
     return CallbackShortcuts(
       bindings: {
@@ -143,12 +150,14 @@ class _CommandBarState extends ConsumerState<CommandBar> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.search_rounded,
-                      size: 20,
-                      color: palette.inkTertiary,
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
+                    if (!isNarrowPhone) ...[
+                      Icon(
+                        Icons.search_rounded,
+                        size: 20,
+                        color: palette.inkTertiary,
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                    ],
                     Expanded(
                       child: TextField(
                         focusNode: _focusNode,
@@ -179,11 +188,15 @@ class _CommandBarState extends ConsumerState<CommandBar> {
                       _IconAction(
                         icon: Icons.close_rounded,
                         onTap: _clear,
-                        tooltip: '清空 (⌘K)',
+                        tooltip: isCompact ? '清空' : '清空 (⌘K)',
+                        isCompact: isCompact,
                       ),
                     ],
                     const SizedBox(width: AppSpacing.xs),
-                    _TranslateChip(onSubmit: () => _onSubmitted(inputText)),
+                    _TranslateChip(
+                      isCompact: isCompact,
+                      onSubmit: () => _onSubmitted(inputText),
+                    ),
                   ],
                 ),
               ),
@@ -199,11 +212,13 @@ class _IconAction extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final String tooltip;
+  final bool isCompact;
 
   const _IconAction({
     required this.icon,
     required this.onTap,
     required this.tooltip,
+    required this.isCompact,
   });
 
   @override
@@ -211,11 +226,11 @@ class _IconAction extends StatelessWidget {
     final palette = AppColors.of(Theme.of(context).brightness);
     return Tooltip(
       message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadii.pill),
-        child: Padding(
-          padding: const EdgeInsets.all(6),
+      child: SizedBox.square(
+        dimension: isCompact ? AppTouchTargets.mobile : 30,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadii.pill),
           child: Icon(icon, size: 18, color: palette.inkTertiary),
         ),
       ),
@@ -226,38 +241,48 @@ class _IconAction extends StatelessWidget {
 /// 翻译主胶囊：墨绿填充 + 白字，主操作。
 class _TranslateChip extends StatelessWidget {
   final VoidCallback onSubmit;
-  const _TranslateChip({required this.onSubmit});
+  final bool isCompact;
+
+  const _TranslateChip({required this.onSubmit, required this.isCompact});
 
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
     return Material(
+      key: const ValueKey('translate-action'),
       color: palette.accent,
       borderRadius: BorderRadius.circular(AppRadii.pill),
       child: InkWell(
         onTap: onSubmit,
         borderRadius: BorderRadius.circular(AppRadii.pill),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '翻译',
-                style: AppTypography.caption(base.labelMedium!).copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.06,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: isCompact ? AppTouchTargets.mobile : 0,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '翻译',
+                  style: AppTypography.caption(base.labelMedium!).copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.06,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 5),
-              Icon(
-                Icons.keyboard_return_rounded,
-                size: 14,
-                color: Colors.white.withValues(alpha: 0.85),
-              ),
-            ],
+                if (!isCompact) ...[
+                  const SizedBox(width: 5),
+                  Icon(
+                    Icons.keyboard_return_rounded,
+                    size: 14,
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
