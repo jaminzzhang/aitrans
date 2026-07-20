@@ -4,8 +4,11 @@ import 'package:aitrans/core/ai/ai_provider.dart';
 import 'package:aitrans/core/ai/provider_factory.dart';
 import 'package:aitrans/core/cache/translation_cache.dart';
 import 'package:aitrans/core/config/ai_config.dart';
+import 'package:aitrans/features/review/logic/review_capture_service.dart';
+import 'package:aitrans/features/review/logic/review_providers.dart';
 import 'package:aitrans/features/translate/logic/translate_controller.dart';
 import 'package:aitrans/features/translate/models/translate_state.dart';
+import 'package:aitrans/features/translate/models/translation_presentation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -24,6 +27,60 @@ void main() {
       emitsError(isA<AIProviderException>()),
     );
   });
+
+  test('the provider graph wires review capture into translation', () async {
+    final provider = _CompletableProvider();
+    final capture = _RecordingReviewCapture();
+    final container = ProviderContainer(
+      overrides: [
+        aiProviderProvider.overrideWithValue(provider),
+        reviewCaptureProvider.overrideWithValue(capture),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(translateControllerProvider.notifier).translateNow('hello');
+    provider.emitText(_reviewableWordResponse('你好'));
+    provider.complete();
+    await pumpEventQueue();
+
+    expect(capture.callCount, 1);
+    expect(
+      container.read(reviewCaptureResultProvider)?.status,
+      ReviewCaptureStatus.captured,
+    );
+    expect(
+      container.read(translateControllerProvider),
+      isA<TranslateComplete>(),
+    );
+  });
+
+  test(
+    'an unavailable review repository does not fail the provider graph translation',
+    () async {
+      final provider = _CompletableProvider();
+      final container = ProviderContainer(
+        overrides: [aiProviderProvider.overrideWithValue(provider)],
+      );
+      addTearDown(container.dispose);
+
+      container
+          .read(translateControllerProvider.notifier)
+          .translateNow('hello');
+      provider.emitText(_reviewableWordResponse('你好'));
+      provider.complete();
+      await pumpEventQueue();
+
+      expect(
+        container.read(translateControllerProvider),
+        isA<TranslateComplete>(),
+      );
+      expect(
+        container.read(reviewCaptureResultProvider)?.status,
+        ReviewCaptureStatus.unavailable,
+      );
+    },
+  );
 
   test(
     'an older cache lookup cannot overwrite the latest translation',
@@ -146,6 +203,140 @@ void main() {
     expect(enrichedTexts, ['the cat']);
   });
 
+  test('a reviewable cache hit is captured exactly once', () async {
+    final capture = _RecordingReviewCapture();
+    final outcomes = <ReviewCaptureResult>[];
+    final controller = TranslateController(
+      _FakeProvider(),
+      _ImmediateCache('''
+SOURCE_LANGUAGE: en
+REVIEW_CLASSIFICATION_VERSION: 1
+REVIEW_CLASSIFICATION: word
+你好
+'''),
+      toLanguage: 'zh',
+      reviewCapture: capture,
+      onReviewCaptureCompleted: outcomes.add,
+    );
+    addTearDown(controller.dispose);
+
+    controller.translateNow('hello');
+    await pumpEventQueue();
+
+    expect(controller.state, isA<TranslateComplete>());
+    expect(capture.callCount, 1);
+    expect(capture.originalSource, 'hello');
+    expect(capture.targetLanguage, TranslationSourceLanguage.zh);
+    expect(capture.presentation?.semanticClass, TranslationSemanticClass.word);
+    expect(outcomes.single.status, ReviewCaptureStatus.captured);
+  });
+
+  test('separate cache hits each produce one translation record', () async {
+    final capture = _RecordingReviewCapture();
+    final controller = TranslateController(
+      _FakeProvider(),
+      _ImmediateCache(_reviewableWordResponse('你好')),
+      reviewCapture: capture,
+    );
+    addTearDown(controller.dispose);
+
+    controller.translateNow('hello');
+    await pumpEventQueue();
+    controller.translateNow('hello');
+    await pumpEventQueue();
+
+    expect(capture.callCount, 2);
+  });
+
+  test('duplicate stream completions capture the generation once', () async {
+    final provider = _CompletableProvider();
+    final capture = _RecordingReviewCapture();
+    final controller = TranslateController(
+      provider,
+      null,
+      toLanguage: 'zh',
+      reviewCapture: capture,
+    );
+    addTearDown(controller.dispose);
+
+    controller.translateNow('hello');
+    provider.emitText('''
+SOURCE_LANGUAGE: en
+REVIEW_CLASSIFICATION_VERSION: 1
+REVIEW_CLASSIFICATION: word
+你好
+''');
+    provider.complete();
+    provider.complete();
+    await pumpEventQueue();
+
+    expect(controller.state, isA<TranslateComplete>());
+    expect(capture.callCount, 1);
+  });
+
+  testWidgets('a debounced translation completion is captured', (tester) async {
+    final provider = _CompletableProvider();
+    final capture = _RecordingReviewCapture();
+    final controller = TranslateController(
+      provider,
+      null,
+      reviewCapture: capture,
+    );
+    addTearDown(controller.dispose);
+
+    controller.onTextChanged('hello');
+    await tester.pump(const Duration(milliseconds: 301));
+    provider.emitText(_reviewableWordResponse('你好'));
+    provider.complete();
+    await tester.pump();
+
+    expect(controller.state, isA<TranslateComplete>());
+    expect(capture.callCount, 1);
+  });
+
+  test('an older cache result cannot create review history', () async {
+    final cache = _DelayedCache();
+    final capture = _RecordingReviewCapture();
+    final controller = TranslateController(
+      _FakeProvider(),
+      cache,
+      reviewCapture: capture,
+    );
+    addTearDown(controller.dispose);
+
+    controller.translateNow('first');
+    controller.translateNow('second');
+    cache.completeLookupAt(1, _reviewableWordResponse('第二个'));
+    await pumpEventQueue();
+    expect(capture.callCount, 1);
+    expect(capture.originalSource, 'second');
+
+    cache.completeLookupAt(0, _reviewableWordResponse('第一个'));
+    await pumpEventQueue();
+    expect(capture.callCount, 1);
+    expect(capture.originalSource, 'second');
+  });
+
+  test('an unexpected capture failure preserves the translation', () async {
+    final outcomes = <ReviewCaptureResult>[];
+    final controller = TranslateController(
+      _FakeProvider(),
+      _ImmediateCache(_reviewableWordResponse('你好')),
+      reviewCapture: _RecordingReviewCapture(
+        error: StateError('synthetic sensitive capture failure'),
+      ),
+      onReviewCaptureCompleted: outcomes.add,
+    );
+    addTearDown(controller.dispose);
+
+    controller.translateNow('hello');
+    await pumpEventQueue();
+
+    expect(controller.state, isA<TranslateComplete>());
+    expect((controller.state as TranslateComplete).text, contains('你好'));
+    expect(outcomes.single.status, ReviewCaptureStatus.failed);
+  });
+
   test('a cache write failure preserves the completed translation', () async {
     final provider = _CompletableProvider();
     final controller = TranslateController(provider, _WriteFailingCache());
@@ -216,6 +407,14 @@ void main() {
     });
   });
 }
+
+String _reviewableWordResponse(String translation) =>
+    '''
+SOURCE_LANGUAGE: en
+REVIEW_CLASSIFICATION_VERSION: 1
+REVIEW_CLASSIFICATION: word
+$translation
+''';
 
 class _CombinedAuxProvider extends _FakeProvider {
   int requestCount = 0;
@@ -378,4 +577,28 @@ class _AllAuxFailingProvider extends _FakeProvider {
       message: 'synthetic',
     ),
   );
+}
+
+class _RecordingReviewCapture implements ReviewCapture {
+  _RecordingReviewCapture({this.error});
+
+  final Object? error;
+  int callCount = 0;
+  String? originalSource;
+  TranslationSourceLanguage? targetLanguage;
+  TranslationPresentation? presentation;
+
+  @override
+  Future<ReviewCaptureResult> capture({
+    required String originalSource,
+    required TranslationSourceLanguage targetLanguage,
+    required TranslationPresentation presentation,
+  }) async {
+    callCount++;
+    if (error case final captureError?) throw captureError;
+    this.originalSource = originalSource;
+    this.targetLanguage = targetLanguage;
+    this.presentation = presentation;
+    return const ReviewCaptureResult(status: ReviewCaptureStatus.captured);
+  }
 }

@@ -6,6 +6,8 @@ import '../../../core/config/ai_config.dart';
 import '../../../core/platform/menu_bar_preference_service.dart';
 import '../../../shared/theme/app_tokens.dart';
 import '../../translate/logic/translate_controller.dart';
+import '../../review/logic/review_history_controller.dart';
+import '../../review/logic/review_providers.dart';
 
 /// 设置浮层（作为 Dialog 呈现）。
 ///
@@ -34,6 +36,8 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
   int _providerLoadGeneration = 0;
   String? _connectionStatus;
   bool _connectionOk = false;
+  bool _isChangingReviewCapture = false;
+  String? _reviewPreferenceError;
   late ProviderType _selectedProvider;
   late final MenuBarPreferenceService _menuBarPreferenceService;
   final Map<ProviderType, AIConfig> _drafts = {};
@@ -210,6 +214,24 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
     }
   }
 
+  Future<void> _setReviewCaptureEnabled(bool enabled) async {
+    if (_isChangingReviewCapture) return;
+    setState(() {
+      _isChangingReviewCapture = true;
+      _reviewPreferenceError = null;
+    });
+    final saved = await ref
+        .read(reviewHistoryControllerProvider.notifier)
+        .setCaptureEnabled(enabled);
+    if (!mounted) return;
+    setState(() {
+      _isChangingReviewCapture = false;
+      if (!saved) {
+        _reviewPreferenceError = '复习设置无法保存，自动记录已暂停';
+      }
+    });
+  }
+
   Future<void> _save() async {
     if (_isSaving || _isLoadingProvider) return;
     final draft = _buildDraft();
@@ -290,6 +312,7 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
     final palette = AppColors.of(Theme.of(context).brightness);
     final base = Theme.of(context).textTheme;
     final storageError = ref.watch(settingsStorageErrorProvider);
+    final reviewState = ref.watch(reviewHistoryControllerProvider);
     final isMobile = Theme.of(context).platform.isMobile;
     final isCompact =
         isMobile || MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
@@ -336,6 +359,58 @@ class _SettingsSheetState extends ConsumerState<SettingsSheet> {
                           selected: _selectedProvider,
                           onSelect: _selectProvider,
                         ),
+                        const SizedBox(height: AppSpacing.lg),
+
+                        _SectionLabel(text: '复习与隐私'),
+                        const SizedBox(height: AppSpacing.sm),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '自动记录单词和短语',
+                                    style: AppTypography.bodyMuted(
+                                      base.bodyMedium!,
+                                    ).copyWith(color: palette.inkPrimary),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '记录在本机加密保存；关闭不会删除已有历史',
+                                    style: AppTypography.caption(
+                                      base.labelSmall!,
+                                    ).copyWith(color: palette.inkTertiary),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Material(
+                              color: Colors.transparent,
+                              child: Switch(
+                                key: const ValueKey('review-capture-switch'),
+                                value: reviewState.captureEnabled,
+                                onChanged:
+                                    _isChangingReviewCapture ||
+                                        !reviewState.preferencesAvailable ||
+                                        reviewState.status ==
+                                            ReviewHistoryStatus.unavailable
+                                    ? null
+                                    : _setReviewCaptureEnabled,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_reviewPreferenceError != null ||
+                            !reviewState.preferencesAvailable) ...[
+                          const SizedBox(height: AppSpacing.xs),
+                          Text(
+                            _reviewPreferenceError ?? '复习设置暂时不可用，自动记录已暂停',
+                            style: AppTypography.caption(
+                              base.labelSmall!,
+                            ).copyWith(color: palette.error),
+                          ),
+                        ],
                         const SizedBox(height: AppSpacing.lg),
 
                         _SectionLabel(text: 'API 配置'),

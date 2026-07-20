@@ -6,6 +6,8 @@ import '../../../core/ai/ai.dart';
 import '../../../core/cache/translation_cache.dart';
 import '../../../core/config/ai_config.dart';
 import '../../../core/config/settings_repository.dart';
+import '../../review/logic/review_capture_service.dart';
+import '../../review/logic/review_providers.dart';
 import '../models/translation_presentation.dart';
 import '../models/translate_state.dart';
 
@@ -204,6 +206,8 @@ class TranslateController extends StateNotifier<TranslateState> {
   final String _fromLanguage;
   final String _toLanguage;
   final ValueChanged<String>? _onTranslationCompleted;
+  final ReviewCapture? _reviewCapture;
+  final ValueChanged<ReviewCaptureResult>? _onReviewCaptureCompleted;
   Timer? _debounceTimer;
   StreamSubscription? _translateSubscription;
   int _requestGeneration = 0;
@@ -214,9 +218,13 @@ class TranslateController extends StateNotifier<TranslateState> {
     String fromLanguage = 'auto',
     String toLanguage = 'zh',
     ValueChanged<String>? onTranslationCompleted,
+    ReviewCapture? reviewCapture,
+    ValueChanged<ReviewCaptureResult>? onReviewCaptureCompleted,
   }) : _fromLanguage = fromLanguage,
        _toLanguage = toLanguage,
        _onTranslationCompleted = onTranslationCompleted,
+       _reviewCapture = reviewCapture,
+       _onReviewCaptureCompleted = onReviewCaptureCompleted,
        super(const TranslateEmpty());
 
   /// 输入变化时调用 (带防抖)
@@ -280,10 +288,13 @@ class TranslateController extends StateNotifier<TranslateState> {
           state = const TranslateError('翻译服务未返回有效译文');
           return;
         }
-        state = TranslateComplete(cached, sourceText: text);
-        if (enrichAfterCompletion) {
-          _onTranslationCompleted?.call(presentation.adoptedSource);
-        }
+        _publishTranslationCompletion(
+          rawTranslation: cached,
+          originalSource: text,
+          presentation: presentation,
+          generation: generation,
+          enrichAfterCompletion: enrichAfterCompletion,
+        );
         return;
       }
     }
@@ -311,10 +322,13 @@ class TranslateController extends StateNotifier<TranslateState> {
                 return;
               }
               unawaited(_writeCacheSafely(cacheKey, finalText));
-              state = TranslateComplete(finalText, sourceText: text);
-              if (enrichAfterCompletion) {
-                _onTranslationCompleted?.call(presentation.adoptedSource);
-              }
+              _publishTranslationCompletion(
+                rawTranslation: finalText,
+                originalSource: text,
+                presentation: presentation,
+                generation: generation,
+                enrichAfterCompletion: enrichAfterCompletion,
+              );
             } else {
               buffer.write(result.text);
               state = TranslateStreaming(buffer.toString(), sourceText: text);
@@ -327,12 +341,54 @@ class TranslateController extends StateNotifier<TranslateState> {
         );
   }
 
+  void _publishTranslationCompletion({
+    required String rawTranslation,
+    required String originalSource,
+    required TranslationPresentation presentation,
+    required int generation,
+    required bool enrichAfterCompletion,
+  }) {
+    state = TranslateComplete(rawTranslation, sourceText: originalSource);
+    unawaited(
+      _captureReviewSafely(
+        originalSource: originalSource,
+        presentation: presentation,
+        generation: generation,
+      ),
+    );
+    if (enrichAfterCompletion) {
+      _onTranslationCompleted?.call(presentation.adoptedSource);
+    }
+  }
+
   Future<void> _writeCacheSafely(String key, String value) async {
     try {
       await _cache?.set(key, value);
     } catch (_) {
       debugPrint('Translation cache write failed.');
     }
+  }
+
+  Future<void> _captureReviewSafely({
+    required String originalSource,
+    required TranslationPresentation presentation,
+    required int generation,
+  }) async {
+    final reviewCapture = _reviewCapture;
+    if (reviewCapture == null) return;
+
+    ReviewCaptureResult result;
+    try {
+      result = await reviewCapture.capture(
+        originalSource: originalSource,
+        targetLanguage: TranslationSourceLanguage.parse(_toLanguage),
+        presentation: presentation,
+      );
+    } catch (_) {
+      result = const ReviewCaptureResult(status: ReviewCaptureStatus.failed);
+    }
+    if (!mounted || generation != _requestGeneration) return;
+    _onReviewCaptureCompleted?.call(result);
   }
 
   /// 清空
@@ -360,11 +416,16 @@ final translateControllerProvider =
       final cache = ref.watch(translationCacheProvider);
       final sourceLanguage = ref.watch(sourceLanguageProvider);
       final targetLanguage = ref.watch(targetLanguageProvider);
+      final reviewCapture = ref.watch(reviewCaptureProvider);
       return TranslateController(
         aiProvider,
         cache,
         fromLanguage: sourceLanguage.code,
         toLanguage: targetLanguage.code,
+        reviewCapture: reviewCapture,
+        onReviewCaptureCompleted: (result) {
+          ref.read(reviewCaptureResultProvider.notifier).state = result;
+        },
         onTranslationCompleted: (text) {
           ref.read(auxiliaryControllerProvider.notifier).loadContent(text);
         },

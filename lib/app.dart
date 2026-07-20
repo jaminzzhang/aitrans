@@ -5,6 +5,8 @@ import 'shared/theme/app_theme.dart';
 import 'shared/theme/app_tokens.dart';
 import 'features/translate/ui/translate_page.dart';
 import 'features/settings/ui/settings_page.dart';
+import 'features/review/ui/review_page.dart';
+import 'features/review/logic/review_providers.dart';
 import 'features/translate/logic/external_translation_coordinator.dart';
 import 'features/translate/logic/translate_controller.dart';
 import 'core/platform/application_command_platform_bridge.dart';
@@ -167,6 +169,53 @@ class _BottomToolBar extends ConsumerWidget {
     final isCompact =
         Theme.of(context).platform.isMobile ||
         MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
+    final isNarrow = MediaQuery.sizeOf(context).width < 360;
+    final languageControls = <Widget>[
+      _LanguageButton(
+        key: const ValueKey('source-language-button'),
+        language: sourceLanguage,
+        isCompact: isCompact,
+        onPressed: () => _showLanguageSelector(
+          context,
+          ref,
+          isSource: true,
+          currentLanguage: sourceLanguage,
+        ),
+      ),
+      IconButton(
+        key: const ValueKey('swap-language-button'),
+        icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+        tooltip: '交换语言',
+        onPressed: sourceLanguage == Languages.auto
+            ? null
+            : () => _swapLanguages(ref),
+        padding: EdgeInsets.symmetric(
+          horizontal: isCompact ? AppSpacing.sm : 2,
+        ),
+        constraints: isCompact
+            ? const BoxConstraints.tightFor(
+                width: AppTouchTargets.mobile,
+                height: AppTouchTargets.mobile,
+              )
+            : const BoxConstraints(),
+        color: palette.inkTertiary,
+      ),
+      _LanguageButton(
+        key: const ValueKey('target-language-button'),
+        language: targetLanguage,
+        isCompact: isCompact,
+        onPressed: () => _showLanguageSelector(
+          context,
+          ref,
+          isSource: false,
+          currentLanguage: targetLanguage,
+        ),
+      ),
+    ];
+    final actionControls = <Widget>[
+      _ReviewIconButton(isCompact: isCompact),
+      _SettingsIconButton(isCompact: isCompact),
+    ];
 
     return SafeArea(
       top: false,
@@ -199,61 +248,41 @@ class _BottomToolBar extends ConsumerWidget {
                   horizontal: isCompact ? AppSpacing.sm : AppSpacing.sm + 2,
                   vertical: AppSpacing.xs + 1,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _LanguageButton(
-                      key: const ValueKey('source-language-button'),
-                      language: sourceLanguage,
-                      isCompact: isCompact,
-                      onPressed: () => _showLanguageSelector(
-                        context,
-                        ref,
-                        isSource: true,
-                        currentLanguage: sourceLanguage,
+                child: isNarrow
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: languageControls,
+                          ),
+                          Container(
+                            width: 96,
+                            height: 0.5,
+                            color: palette.divider,
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: actionControls,
+                          ),
+                        ],
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ...languageControls,
+                          // 发丝竖分隔：语言区与功能入口之间的极淡呼吸。
+                          Container(
+                            width: 0.5,
+                            height: 16,
+                            margin: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.sm,
+                            ),
+                            color: palette.divider,
+                          ),
+                          ...actionControls,
+                        ],
                       ),
-                    ),
-                    IconButton(
-                      key: const ValueKey('swap-language-button'),
-                      icon: const Icon(Icons.swap_horiz_rounded, size: 16),
-                      tooltip: '交换语言',
-                      onPressed: sourceLanguage == Languages.auto
-                          ? null
-                          : () => _swapLanguages(ref),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isCompact ? AppSpacing.sm : 2,
-                      ),
-                      constraints: isCompact
-                          ? const BoxConstraints.tightFor(
-                              width: AppTouchTargets.mobile,
-                              height: AppTouchTargets.mobile,
-                            )
-                          : const BoxConstraints(),
-                      color: palette.inkTertiary,
-                    ),
-                    _LanguageButton(
-                      key: const ValueKey('target-language-button'),
-                      language: targetLanguage,
-                      isCompact: isCompact,
-                      onPressed: () => _showLanguageSelector(
-                        context,
-                        ref,
-                        isSource: false,
-                        currentLanguage: targetLanguage,
-                      ),
-                    ),
-                    // 发丝竖分隔：语言区与齿轮之间的极淡呼吸。
-                    Container(
-                      width: 0.5,
-                      height: 16,
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.sm,
-                      ),
-                      color: palette.divider,
-                    ),
-                    _SettingsIconButton(isCompact: isCompact),
-                  ],
-                ),
               ),
             ),
           ),
@@ -418,6 +447,80 @@ class _SettingsIconButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ReviewIconButton extends ConsumerWidget {
+  const _ReviewIconButton({required this.isCompact});
+
+  final bool isCompact;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppColors.of(Theme.of(context).brightness);
+    final dueCount = ref.watch(
+      reviewHistoryControllerProvider.select((state) => state.dueCount),
+    );
+    return Tooltip(
+      message: '复习',
+      child: IconButton(
+        key: const ValueKey('review-button'),
+        icon: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(
+              Icons.auto_stories_outlined,
+              size: 20,
+              color: palette.inkTertiary,
+            ),
+            if (dueCount > 0)
+              Positioned(
+                key: const ValueKey('review-badge'),
+                right: -10,
+                top: -9,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: palette.seal,
+                    borderRadius: AppRadii.pillRadius,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    child: Text(
+                      dueCount > 99 ? '99+' : '$dueCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        onPressed: () => showAITransReviewPage(context),
+        constraints: isCompact
+            ? const BoxConstraints.tightFor(
+                width: AppTouchTargets.mobile,
+                height: AppTouchTargets.mobile,
+              )
+            : null,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+      ),
+    );
+  }
+}
+
+Future<void> showAITransReviewPage(BuildContext context) {
+  return Navigator.of(context, rootNavigator: true).push<void>(
+    MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (_) => const ReviewPage(),
+    ),
+  );
 }
 
 Future<void> showAITransSettingsDialog(BuildContext context) {

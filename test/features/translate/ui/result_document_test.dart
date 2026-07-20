@@ -175,6 +175,35 @@ void main() {
       );
     });
 
+    testWidgets('does not render or copy review classification metadata', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          const TranslateComplete(
+            'CORRECTION: -\n'
+            'SOURCE_LANGUAGE: en\n'
+            'REVIEW_CLASSIFICATION_VERSION: 1\n'
+            'REVIEW_CLASSIFICATION: word\n'
+            '猫\n'
+            'POS: noun',
+            sourceText: 'cat',
+          ),
+          const AuxiliaryState(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('猫'), findsOneWidget);
+      expect(find.text('noun'), findsOneWidget);
+      expect(find.textContaining('SOURCE_LANGUAGE'), findsNothing);
+      expect(find.textContaining('REVIEW_CLASSIFICATION'), findsNothing);
+      expect(
+        tester.widget<CopyButton>(find.byType(CopyButton)).text,
+        '猫\nPOS: noun',
+      );
+    });
+
     testWidgets('does not show a correction hint when none was returned', (
       tester,
     ) async {

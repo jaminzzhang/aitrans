@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'ai_provider.dart';
 import 'prompts.dart';
+import 'review_ai_models.dart';
 
 /// Claude Provider 实现
 class ClaudeProvider extends AIProvider {
   final Dio _dio;
+  final Set<CancelToken> _activeCancelTokens = {};
   final String apiKey;
   final String baseUrl;
   final String model;
@@ -23,6 +25,21 @@ class ClaudeProvider extends AIProvider {
 
   @override
   String get cacheNamespace => 'Claude|$baseUrl|$model';
+
+  @override
+  Future<void> cancelActiveRequests() async {
+    for (final token in _activeCancelTokens.toList()) {
+      if (!token.isCancelled) token.cancel();
+    }
+  }
+
+  @override
+  void close() {
+    for (final token in _activeCancelTokens.toList()) {
+      if (!token.isCancelled) token.cancel();
+    }
+    _dio.close(force: true);
+  }
 
   @override
   Future<bool> testConnection() async {
@@ -121,6 +138,36 @@ class ClaudeProvider extends AIProvider {
   }
 
   @override
+  Future<ReviewAIRankResponse> rankReviewCandidates(
+    ReviewAIRankRequest request,
+  ) async {
+    final json = await _streamJsonObject(Prompts.reviewRanking(request));
+    try {
+      return ReviewAIRankResponse.fromJson(json);
+    } on FormatException {
+      throw const AIProviderException(
+        code: AIProviderErrorCode.invalidResponse,
+        message: 'The AI service returned an invalid review ranking.',
+      );
+    }
+  }
+
+  @override
+  Future<ReviewAITextContentResponse> generateReviewTextContent(
+    ReviewAITextContentRequest request,
+  ) async {
+    final json = await _streamJsonObject(Prompts.reviewTextContent(request));
+    try {
+      return ReviewAITextContentResponse.fromJson(json);
+    } on FormatException {
+      throw const AIProviderException(
+        code: AIProviderErrorCode.invalidResponse,
+        message: 'The AI service returned invalid review text.',
+      );
+    }
+  }
+
+  @override
   Stream<TranslationEnrichment> enrichTranslation(String text) async* {
     final json = await _streamJsonObject(Prompts.translationEnrichment(text));
     yield TranslationEnrichment.fromJson(json);
@@ -215,6 +262,8 @@ class ClaudeProvider extends AIProvider {
 
   Future<Map<String, dynamic>> _streamJsonObject(String prompt) async {
     final buffer = StringBuffer();
+    final cancelToken = CancelToken();
+    _activeCancelTokens.add(cancelToken);
     try {
       final response = await _dio.post<ResponseBody>(
         '$baseUrl/messages',
@@ -234,6 +283,7 @@ class ClaudeProvider extends AIProvider {
             {'role': 'user', 'content': prompt},
           ],
         },
+        cancelToken: cancelToken,
       );
 
       await for (final chunk in response.data!.stream) {
@@ -256,11 +306,26 @@ class ClaudeProvider extends AIProvider {
         }
       }
       throw const FormatException('Incomplete AI response.');
+    } on DioException catch (error) {
+      if (CancelToken.isCancel(error)) {
+        throw const AIProviderException(
+          code: AIProviderErrorCode.cancelled,
+          message: 'AI request was cancelled.',
+        );
+      }
+      throw const AIProviderException(
+        code: AIProviderErrorCode.invalidResponse,
+        message: 'The AI service returned an invalid response.',
+      );
+    } on AIProviderException {
+      rethrow;
     } catch (_) {
       throw const AIProviderException(
         code: AIProviderErrorCode.invalidResponse,
         message: 'The AI service returned an invalid response.',
       );
+    } finally {
+      _activeCancelTokens.remove(cancelToken);
     }
   }
 }

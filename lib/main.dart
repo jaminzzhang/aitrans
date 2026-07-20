@@ -16,12 +16,25 @@ import 'core/platform/local_storage_protection.dart';
 import 'core/security/encrypted_provider_credential_store.dart';
 import 'core/security/local_master_key_store.dart';
 import 'core/ai/provider_factory.dart';
+import 'features/review/data/hive_review_ciphertext_store.dart';
+import 'features/review/data/review_key_store.dart';
+import 'features/review/data/review_repository.dart';
+import 'features/review/data/review_preferences_store.dart';
+import 'features/review/data/review_repository_bootstrap.dart';
+import 'features/review/logic/review_providers.dart';
 import 'features/translate/logic/translate_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   SettingsRepository settingsRepository = const UnavailableSettingsRepository();
+  ReviewRepository reviewRepository = const UnavailableReviewRepository();
+  ReviewPreferencesStore reviewPreferencesStore =
+      const UnavailableReviewPreferencesStore();
+  ReviewPreferences initialReviewPreferences = const ReviewPreferences(
+    captureEnabled: false,
+    privacyNoticeAcknowledged: false,
+  );
   AIConfig initialConfig = AIConfig(providerType: ProviderType.ollama);
   String? settingsStorageError;
   var hiveReady = false;
@@ -47,6 +60,33 @@ void main() async {
       await Hive.openBox<CachedTranslation>('translation_cache');
     } catch (_) {
       debugPrint('Translation cache initialization failed.');
+    }
+
+    try {
+      final reviewPreferencesBox = await Hive.openBox<dynamic>(
+        'review_preferences',
+      );
+      reviewPreferencesStore = HiveReviewPreferencesStore(reviewPreferencesBox);
+      initialReviewPreferences = await reviewPreferencesStore.load();
+    } catch (_) {
+      debugPrint('Review preferences initialization failed.');
+    }
+
+    try {
+      final reviewHistoryBox = await Hive.openBox<dynamic>('review_history');
+      final reviewContentBox = await Hive.openBox<dynamic>('review_content');
+      await const LocalStorageProtection().excludeFromBackup([
+        storageDirectory.path,
+        if (reviewHistoryBox.path != null) reviewHistoryBox.path!,
+        if (reviewContentBox.path != null) reviewContentBox.path!,
+      ]);
+      reviewRepository = await ReviewRepositoryBootstrap.open(
+        historyStore: HiveReviewCiphertextStore(reviewHistoryBox),
+        contentStore: HiveReviewCiphertextStore(reviewContentBox),
+        keyStore: PlatformReviewKeyStore(),
+      );
+    } catch (_) {
+      debugPrint('Review storage initialization failed.');
     }
 
     try {
@@ -115,6 +155,13 @@ void main() async {
       overrides: [
         initialAIConfigProvider.overrideWithValue(initialConfig),
         settingsRepositoryProvider.overrideWithValue(settingsRepository),
+        reviewRepositoryProvider.overrideWithValue(reviewRepository),
+        reviewPreferencesStoreProvider.overrideWithValue(
+          reviewPreferencesStore,
+        ),
+        initialReviewPreferencesProvider.overrideWithValue(
+          initialReviewPreferences,
+        ),
         initialSettingsStorageErrorProvider.overrideWithValue(
           settingsStorageError,
         ),

@@ -6,3 +6,4 @@ export 'ollama_provider.dart';
 export 'deepseek_provider.dart';
 export 'openai_compatible_provider.dart';
 export 'provider_factory.dart';
+export 'review_ai_models.dart';

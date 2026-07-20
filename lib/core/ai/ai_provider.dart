@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'ai_chat.dart';
+import 'review_ai_models.dart';
 
 enum AIProviderErrorCode {
   invalidConfiguration,
@@ -8,6 +9,7 @@ enum AIProviderErrorCode {
   invalidResponse,
   cancelled,
   unsupportedCapability,
+  safetyRejected,
 }
 
 class AIProviderException implements Exception {
@@ -153,6 +155,37 @@ abstract class AIProvider {
     String from = 'auto',
     String to = 'zh',
   });
+
+  Future<ReviewAIRankResponse> rankReviewCandidates(
+    ReviewAIRankRequest request,
+  ) => Future.error(
+    const AIProviderException(
+      code: AIProviderErrorCode.unsupportedCapability,
+      message: 'This provider does not support review ranking.',
+    ),
+  );
+
+  Future<ReviewAITextContentResponse> generateReviewTextContent(
+    ReviewAITextContentRequest request,
+  ) => Future.error(
+    const AIProviderException(
+      code: AIProviderErrorCode.unsupportedCapability,
+      message: 'This provider does not support review text generation.',
+    ),
+  );
+
+  /// Image generation is opt-in for the exact configured provider/model.
+  ReviewAIImageCapability get reviewImageCapability =>
+      ReviewAIImageCapability.unsupported;
+
+  Future<ReviewAIImageResponse> generateReviewImage(
+    ReviewAIImageRequest request,
+  ) => Future.error(
+    const AIProviderException(
+      code: AIProviderErrorCode.unsupportedCapability,
+      message: 'This provider does not support review image generation.',
+    ),
+  );
 
   /// 一次请求返回场景例句、电影台词和考试真题。
   Stream<TranslationEnrichment> enrichTranslation(String text) => Stream.error(

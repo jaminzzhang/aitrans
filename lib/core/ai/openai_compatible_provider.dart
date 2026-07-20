@@ -6,6 +6,7 @@ import 'package:openai_dart/openai_dart.dart';
 import 'ai_provider.dart';
 import 'ai_chat.dart';
 import 'prompts.dart';
+import 'review_ai_models.dart';
 
 /// OpenAI Chat Completions compatible provider used by remote and local models.
 class OpenAICompatibleProvider extends AIProvider {
@@ -392,6 +393,36 @@ class OpenAICompatibleProvider extends AIProvider {
           ),
         )
         .toList();
+  }
+
+  @override
+  Future<ReviewAIRankResponse> rankReviewCandidates(
+    ReviewAIRankRequest request,
+  ) async {
+    final json = await _requestJsonObject(Prompts.reviewRanking(request));
+    try {
+      return ReviewAIRankResponse.fromJson(json);
+    } on FormatException {
+      throw const AIProviderException(
+        code: AIProviderErrorCode.invalidResponse,
+        message: 'The AI service returned an invalid review ranking.',
+      );
+    }
+  }
+
+  @override
+  Future<ReviewAITextContentResponse> generateReviewTextContent(
+    ReviewAITextContentRequest request,
+  ) async {
+    final json = await _requestJsonObject(Prompts.reviewTextContent(request));
+    try {
+      return ReviewAITextContentResponse.fromJson(json);
+    } on FormatException {
+      throw const AIProviderException(
+        code: AIProviderErrorCode.invalidResponse,
+        message: 'The AI service returned invalid review text.',
+      );
+    }
   }
 
   @override

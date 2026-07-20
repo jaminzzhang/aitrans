@@ -194,4 +194,139 @@ void main() {
     expect(enrichment.movieQuotes.single.movie, 'Test Movie');
     expect(enrichment.examItems.single.source, 'Test Exam');
   });
+
+  test('ranks review candidates with one strict JSON request', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(server.close);
+    var requestCount = 0;
+    late Map<String, dynamic> requestBody;
+
+    server.listen((request) async {
+      requestCount++;
+      requestBody =
+          jsonDecode(await utf8.decoder.bind(request).join())
+              as Map<String, dynamic>;
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType(
+          'text',
+          'event-stream',
+          charset: 'utf-8',
+        )
+        ..write(
+          'data: ${jsonEncode({
+            'choices': [
+              {
+                'index': 0,
+                'delta': {
+                  'content': jsonEncode({
+                    'contractVersion': 1,
+                    'rankedItems': [
+                      {'id': 'candidate-1', 'reason': 'Frequently forgotten'},
+                    ],
+                  }),
+                },
+                'finish_reason': null,
+              },
+            ],
+          })}\n\n',
+        )
+        ..write('data: [DONE]\n\n');
+      await request.response.close();
+    });
+    final provider = OpenAICompatibleProvider(
+      providerName: 'ReviewTest',
+      apiKey: 'test-key',
+      baseUrl: 'http://127.0.0.1:${server.port}/v1',
+      model: 'test-model',
+    );
+    addTearDown(provider.close);
+    final rankRequest = ReviewAIRankRequest(
+      candidates: [
+        ReviewAICandidate(
+          id: 'candidate-1',
+          term: 'otter',
+          sourceLanguage: 'en',
+          targetLanguage: 'zh',
+          translationCount: 2,
+          consecutiveRememberedCount: 0,
+          forgetCount: 1,
+          overdueMinutes: 60,
+          daysSinceLastReview: 2,
+        ),
+      ],
+    );
+
+    final response = await provider.rankReviewCandidates(rankRequest);
+
+    expect(response.rankedItems.single.id, 'candidate-1');
+    expect(requestCount, 1);
+    expect(requestBody['model'], 'test-model');
+    expect(requestBody['messages'], [
+      {'role': 'user', 'content': Prompts.reviewRanking(rankRequest)},
+    ]);
+  });
+
+  test('generates review text with one strict JSON request', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(server.close);
+    var requestCount = 0;
+    late Map<String, dynamic> requestBody;
+    server.listen((request) async {
+      requestCount++;
+      requestBody =
+          jsonDecode(await utf8.decoder.bind(request).join())
+              as Map<String, dynamic>;
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType(
+          'text',
+          'event-stream',
+          charset: 'utf-8',
+        )
+        ..write(
+          'data: ${jsonEncode({
+            'choices': [
+              {
+                'index': 0,
+                'delta': {
+                  'content': jsonEncode({
+                    'contractVersion': 1,
+                    'everydayUsages': [
+                      {'situation': '初次见面', 'original': 'A joke helped break the ice.', 'translation': '一个玩笑帮助大家打破了僵局。'},
+                    ],
+                    'fictionalDialogue': {'dialogue': 'We need to break the ice.', 'translation': '我们得活跃一下气氛。'},
+                  }),
+                },
+                'finish_reason': null,
+              },
+            ],
+          })}\n\n',
+        )
+        ..write('data: [DONE]\n\n');
+      await request.response.close();
+    });
+    final provider = OpenAICompatibleProvider(
+      providerName: 'ReviewTextTest',
+      apiKey: 'test-key',
+      baseUrl: 'http://127.0.0.1:${server.port}/v1',
+      model: 'test-model',
+    );
+    addTearDown(provider.close);
+    final contentRequest = ReviewAITextContentRequest(
+      term: 'break the ice',
+      sourceLanguage: 'en',
+      targetLanguage: 'zh',
+      primaryMeaning: '打破僵局',
+    );
+
+    final response = await provider.generateReviewTextContent(contentRequest);
+
+    expect(response.everydayUsages.single.situation, '初次见面');
+    expect(response.fictionalDialogue.dialogue, contains('break the ice'));
+    expect(requestCount, 1);
+    expect(requestBody['messages'], [
+      {'role': 'user', 'content': Prompts.reviewTextContent(contentRequest)},
+    ]);
+  });
 }

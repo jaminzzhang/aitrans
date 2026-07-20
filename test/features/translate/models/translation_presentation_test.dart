@@ -2,6 +2,104 @@ import 'package:aitrans/features/translate/models/translation_presentation.dart'
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'parses versioned review metadata without exposing it as translation',
+    () {
+      final presentation = TranslationPresentation.parse(
+        'CORRECTION: -\n'
+        'SOURCE_LANGUAGE: en\n'
+        'REVIEW_CLASSIFICATION_VERSION: 1\n'
+        'REVIEW_CLASSIFICATION: word\n'
+        '猫\n'
+        'POS: noun',
+        originalSource: 'cat',
+      );
+
+      expect(presentation.actualSourceLanguage, TranslationSourceLanguage.en);
+      expect(presentation.reviewClassificationVersion, 1);
+      expect(presentation.semanticClass, TranslationSemanticClass.word);
+      expect(presentation.primaryMeaning, '猫');
+      expect(presentation.translationText, '猫\nPOS: noun');
+      expect(TranslationPresentation.outputContractVersion, 5);
+    },
+  );
+
+  test('does not infer review metadata from legacy or malformed responses', () {
+    final cases =
+        <({String response, TranslationSourceLanguage language, int? version})>[
+          (
+            response: '猫',
+            language: TranslationSourceLanguage.unknown,
+            version: null,
+          ),
+          (
+            response:
+                'SOURCE_LANGUAGE: english\n'
+                'REVIEW_CLASSIFICATION_VERSION: 1\n'
+                'REVIEW_CLASSIFICATION: word\n'
+                '猫',
+            language: TranslationSourceLanguage.unknown,
+            version: 1,
+          ),
+          (
+            response:
+                'SOURCE_LANGUAGE: en\n'
+                'REVIEW_CLASSIFICATION_VERSION: 2\n'
+                'REVIEW_CLASSIFICATION: word\n'
+                '猫',
+            language: TranslationSourceLanguage.en,
+            version: 2,
+          ),
+          (
+            response:
+                'SOURCE_LANGUAGE: en\n'
+                'REVIEW_CLASSIFICATION_VERSION: 1\n'
+                'REVIEW_CLASSIFICATION: idiom\n'
+                '猫',
+            language: TranslationSourceLanguage.unknown,
+            version: 1,
+          ),
+          (
+            response:
+                'SOURCE_LANGUAGE: en\n'
+                'REVIEW_CLASSIFICATION_VERSION: 1\n'
+                'REVIEW_CLASSIFICATION: word\n'
+                'REVIEW_CLASSIFICATION: phrase\n'
+                '猫',
+            language: TranslationSourceLanguage.unknown,
+            version: 1,
+          ),
+        ];
+
+    for (final testCase in cases) {
+      final presentation = TranslationPresentation.parse(testCase.response);
+
+      expect(presentation.actualSourceLanguage, testCase.language);
+      expect(presentation.reviewClassificationVersion, testCase.version);
+      expect(
+        presentation.semanticClass,
+        TranslationSemanticClass.unknown,
+        reason: testCase.response,
+      );
+      expect(presentation.primaryMeaning, '猫');
+    }
+  });
+
+  test('hides incomplete review protocol prefixes while streaming', () {
+    for (final response in [
+      'CORRECTION: -\nSOURCE_',
+      'CORRECTION: -\nSOURCE_LANGUAGE: en\nREVIEW_CLASS',
+    ]) {
+      final presentation = TranslationPresentation.parse(
+        response,
+        originalSource: 'cat',
+      );
+
+      expect(presentation.primaryMeaning, isEmpty, reason: response);
+      expect(presentation.translationText, isEmpty, reason: response);
+    }
+  });
+
   test('separates a valid correction from the translated presentation', () {
     final presentation = TranslationPresentation.parse(
       'CORRECTION: the cat\n猫\nPOS: noun\nPRON: /kæt/\n- 猫科动物',

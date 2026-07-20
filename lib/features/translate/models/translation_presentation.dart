@@ -1,8 +1,50 @@
+enum TranslationSourceLanguage {
+  zh,
+  en,
+  ja,
+  ko,
+  fr,
+  de,
+  es,
+  ru,
+  pt,
+  it,
+  unknown;
+
+  static TranslationSourceLanguage parse(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    return values
+            .where((language) => language.name == normalized)
+            .firstOrNull ??
+        unknown;
+  }
+}
+
+enum TranslationSemanticClass {
+  word,
+  phrase,
+  sentence,
+  paragraph,
+  unknown;
+
+  static TranslationSemanticClass parse(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    return values
+            .where((semanticClass) => semanticClass.name == normalized)
+            .firstOrNull ??
+        unknown;
+  }
+}
+
 class TranslationPresentation {
-  static const int outputContractVersion = 4;
+  static const int outputContractVersion = 5;
+  static const int reviewClassificationContractVersion = 1;
 
   final String? correctedSource;
   final String adoptedSource;
+  final TranslationSourceLanguage actualSourceLanguage;
+  final int? reviewClassificationVersion;
+  final TranslationSemanticClass semanticClass;
   final String translationText;
   final String primaryMeaning;
   final String? partOfSpeech;
@@ -12,6 +54,9 @@ class TranslationPresentation {
   const TranslationPresentation({
     this.correctedSource,
     this.adoptedSource = '',
+    this.actualSourceLanguage = TranslationSourceLanguage.unknown,
+    this.reviewClassificationVersion,
+    this.semanticClass = TranslationSemanticClass.unknown,
     this.translationText = '',
     required this.primaryMeaning,
     this.partOfSpeech,
@@ -62,12 +107,100 @@ class TranslationPresentation {
       }
     }
 
+    var actualSourceLanguage = TranslationSourceLanguage.unknown;
+    int? reviewClassificationVersion;
+    var declaredSemanticClass = TranslationSemanticClass.unknown;
+    var sawSourceLanguage = false;
+    var sawClassificationVersion = false;
+    var sawSemanticClass = false;
+    var reviewMetadataMalformed = false;
+    final contentLines = <String>[];
+    for (final line in lines) {
+      final sourceLanguageMatch = RegExp(
+        r'^SOURCE_LANGUAGE\s*:\s*(.*)$',
+        caseSensitive: false,
+      ).firstMatch(line);
+      if (sourceLanguageMatch != null) {
+        if (sawSourceLanguage) reviewMetadataMalformed = true;
+        sawSourceLanguage = true;
+        final rawLanguage = sourceLanguageMatch.group(1)?.trim().toLowerCase();
+        actualSourceLanguage = TranslationSourceLanguage.parse(rawLanguage);
+        if (actualSourceLanguage == TranslationSourceLanguage.unknown &&
+            rawLanguage != TranslationSourceLanguage.unknown.name) {
+          reviewMetadataMalformed = true;
+        }
+        continue;
+      }
+
+      final classificationVersionMatch = RegExp(
+        r'^REVIEW_CLASSIFICATION_VERSION\s*:\s*(.*)$',
+        caseSensitive: false,
+      ).firstMatch(line);
+      if (classificationVersionMatch != null) {
+        if (sawClassificationVersion) reviewMetadataMalformed = true;
+        sawClassificationVersion = true;
+        reviewClassificationVersion = int.tryParse(
+          classificationVersionMatch.group(1)?.trim() ?? '',
+        );
+        if (reviewClassificationVersion == null) {
+          reviewMetadataMalformed = true;
+        }
+        continue;
+      }
+
+      final classificationMatch = RegExp(
+        r'^REVIEW_CLASSIFICATION\s*:\s*(.*)$',
+        caseSensitive: false,
+      ).firstMatch(line);
+      if (classificationMatch != null) {
+        if (sawSemanticClass) reviewMetadataMalformed = true;
+        sawSemanticClass = true;
+        final rawSemanticClass = classificationMatch
+            .group(1)
+            ?.trim()
+            .toLowerCase();
+        declaredSemanticClass = TranslationSemanticClass.parse(
+          rawSemanticClass,
+        );
+        if (declaredSemanticClass == TranslationSemanticClass.unknown &&
+            rawSemanticClass != TranslationSemanticClass.unknown.name) {
+          reviewMetadataMalformed = true;
+        }
+        continue;
+      }
+
+      if (_isIncompleteReviewMetadataPrefix(line) ||
+          _looksLikeMalformedReviewMetadata(line)) {
+        reviewMetadataMalformed = true;
+        continue;
+      }
+
+      contentLines.add(line);
+    }
+    lines = contentLines;
+
+    final hasCurrentReviewMetadata =
+        !reviewMetadataMalformed &&
+        sawSourceLanguage &&
+        sawClassificationVersion &&
+        sawSemanticClass &&
+        actualSourceLanguage != TranslationSourceLanguage.unknown &&
+        reviewClassificationVersion == reviewClassificationContractVersion;
+    final semanticClass = hasCurrentReviewMetadata
+        ? declaredSemanticClass
+        : TranslationSemanticClass.unknown;
+    if (reviewMetadataMalformed) {
+      actualSourceLanguage = TranslationSourceLanguage.unknown;
+    }
     final adoptedSource = correctedSource ?? originalSource.trim();
 
     if (lines.isEmpty) {
       return TranslationPresentation(
         correctedSource: correctedSource,
         adoptedSource: adoptedSource,
+        actualSourceLanguage: actualSourceLanguage,
+        reviewClassificationVersion: reviewClassificationVersion,
+        semanticClass: semanticClass,
         translationText: '',
         primaryMeaning: '',
         secondaryMeanings: const [],
@@ -103,6 +236,9 @@ class TranslationPresentation {
     return TranslationPresentation(
       correctedSource: correctedSource,
       adoptedSource: adoptedSource,
+      actualSourceLanguage: actualSourceLanguage,
+      reviewClassificationVersion: reviewClassificationVersion,
+      semanticClass: semanticClass,
       translationText: lines.join('\n'),
       primaryMeaning: lines.first,
       partOfSpeech: partOfSpeech,
@@ -122,6 +258,24 @@ class TranslationPresentation {
 
   static String _stripListMarker(String line) =>
       line.replaceFirst(RegExp(r'^(?:[-*•·]\s*|\d+[.)、]\s*)'), '').trim();
+
+  static bool _isIncompleteReviewMetadataPrefix(String line) {
+    final value = line.trim().toUpperCase();
+    if (!value.startsWith('SOURCE_') && !value.startsWith('REVIEW_')) {
+      return false;
+    }
+    return const [
+      'SOURCE_LANGUAGE:',
+      'REVIEW_CLASSIFICATION_VERSION:',
+      'REVIEW_CLASSIFICATION:',
+    ].any((prefix) => value.length < prefix.length && prefix.startsWith(value));
+  }
+
+  static bool _looksLikeMalformedReviewMetadata(String line) {
+    final value = line.trim().toUpperCase();
+    return value.startsWith('SOURCE_LANGUAGE') ||
+        value.startsWith('REVIEW_CLASSIFICATION');
+  }
 
   static bool _preservesProtectedTokens(String original, String candidate) {
     final originalTokens = _protectedTokens(original)..sort();
